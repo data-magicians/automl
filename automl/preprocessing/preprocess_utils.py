@@ -1,38 +1,25 @@
-
-
 import pandas as pd
 import numpy as np
-import os
 from datetime import datetime
 import pandasql as ps
 from datetime import timedelta
-
+import os
 
 
 def get_data():
 
     raw_data_files = os.listdir(os.getcwd()+"/raw_data")
-
     raw_data_files_clean = [file.split(".")[0] for file in raw_data_files]
-
     data = {}
-
     for name in raw_data_files_clean:
-
         data[name] = pd.read_csv(os.getcwd()+"/raw_data/"+name+".csv",sep=";")
-          
     # strip spaces from all columns names (left and right)
 
     for key in list(data.keys()):
-
         clean_col_names = [name.strip() for name in data[key].columns]
-
         data[key].columns = clean_col_names
-        
-        
+
     return data
-
-
 
 
 def int_to_date(date):
