@@ -1,10 +1,10 @@
 from sklearn.base import TransformerMixin, BaseEstimator
 from sklearn.preprocessing import LabelEncoder, MinMaxScaler
-# from sklearn.impute import SimpleImputer
-from sklearn.preprocessing import Imputer
+from sklearn.impute import SimpleImputer
+# from sklearn.preprocessing import Imputer
 import sys
 sys.path.append("/home/ec2-user/TCM")
-from preprocessing.dev_tools import series_to_supervised
+from automl.preprocessing.dev_tools import series_to_supervised
 import pandas as pd
 import hdbscan
 import numpy as np
@@ -169,7 +169,7 @@ class ImputeTransformer(CustomTransformer):
         self.numerical_cols = [col for col in self.numerical_cols if col in X.columns]
         self.categorical_cols = [col for col in self.categorical_cols if col in X.columns]
         if self.strategy not in ["time_series", "zero"]:
-            self.imp = Imputer(strategy=self.strategy)
+            self.imp = SimpleImputer(strategy=self.strategy)
             self.imp.fit(X[self.numerical_cols])
             self.statistics_ = pd.Series(self.imp.statistics_, index=X[self.numerical_cols].columns)
         print("ImputeTransformer fit end")

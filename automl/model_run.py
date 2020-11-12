@@ -1,8 +1,8 @@
 import sys
 sys.path.append("automl")
-from preprocessing.dev_tools import *
-from preprocessing.transformers import *
-from preprocessing.pipelines import *
+from automl.preprocessing.dev_tools import *
+from automl.preprocessing.transformers import *
+from automl.preprocessing.pipelines import *
 from sklearn.model_selection import RandomizedSearchCV, KFold
 import time
 import multiprocessing as mp
