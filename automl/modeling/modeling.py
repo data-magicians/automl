@@ -519,18 +519,6 @@ def plot_roc(model, y_test, y_score):
     plt.show()
 
 
-def read_data(target, keys, spark):
-
-    file_name = "preprocess_results/preprocess_pipeline_{}.p".format(target)
-    target, index, time_in_minutes, pipeline_feat = pickle.load(open(file_name, "rb"))
-    X_train = pd.read_csv("preprocess_results/X_train_{}.csv".format(target)).set_index(keys)
-    y_train = pd.read_csv("preprocess_results/y_train_{}.csv".format(target)).values.flatten()
-    X_test = pd.read_csv("preprocess_results/X_test_{}.csv".format(target)).set_index(keys)
-    y_test = pd.read_csv("preprocess_results/y_test_{}.csv".format(target)).values.flatten()
-
-    return target, index, X_train, y_train, X_test, y_test, time_in_minutes, pipeline_feat
-
-
 def load_model(path="results/"):
 
     yaml_file = open(path + 'model.yaml', 'r')
@@ -541,3 +529,4 @@ def load_model(path="results/"):
     loaded_model.load_weights("machine_learning/models/pl_sb_model/model_saved/model.h5")
     print("Loaded model from disk")
     return loaded_model
+

@@ -4,7 +4,7 @@ from sklearn.impute import SimpleImputer
 # from sklearn.preprocessing import Imputer
 import sys
 sys.path.append("/home/ec2-user/TCM")
-from automl.preprocessing.dev_tools import series_to_supervised
+from automl.dev_tools import series_to_supervised
 import pandas as pd
 import hdbscan
 import numpy as np
