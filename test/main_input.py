@@ -6,9 +6,9 @@ from pyspark.sql.session import SparkSession
 from automl.automl import AutoML
 from google.protobuf.json_format import MessageToDict
 # from automl.test import simple_pb2
-import os
-# os.environ['SPARK_HOME']
-os.environ["JAVA_HOME"] = r'C:\Program Files\Java\jdk1.8.0'
+# import os
+# del os.environ['PYSPARK_SUBMIT_ARGS']
+# os.environ["JAVA_HOME"] = r'C:\Program Files\Java\jdk1.8.0'
 if __name__ == "__main__":
 
     spark = SparkSession \

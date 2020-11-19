@@ -1,2 +1,2 @@
 # automl
-automl library by the data magicians comunity
+automl library by the data magicians for datomize

@@ -52,7 +52,7 @@ setup(
     long_description=long_description,
     long_description_content_type='text/markdown',
     version=version,
-    packages=find_packages(exclude=['test', 'scripts', 'examples']),
+    packages=find_packages(exclude=['test', 'scripts', 'examples', 'datomize-protos']),
     setup_requires=setup_reqs,
     extras_require=extras_reqs,
     install_requires=install_reqs,
