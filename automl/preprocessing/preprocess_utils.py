@@ -4,9 +4,14 @@ from datetime import timedelta
 import time
 from automl.preprocessing.transformers import *
 from automl.preprocessing.pipelines import *
-import io
-import joblib
+import logging
+from automl.dev_tools import *
 
+
+logging.basicConfig(format='%(asctime)s     %(levelname)-8s %(message)s',
+                    datefmt='%Y-%m-%d %H:%M:%S',
+                    stream=sys.stdout,
+                    level='INFO')
 
 def get_data():
 
@@ -329,7 +334,7 @@ def over_sample(X_train, y_train):
             y_train_new.append(y_train.iloc[n])
         return pd.concat([X_train, pd.DataFrame(X_train_new)]), pd.concat([y_train, pd.Series(y_train_new)])
     except Exception as e:
-        print(e)
+        logging.info(e)
         print("the error is in oversample")
         return X_train, y_train
 
@@ -337,7 +342,7 @@ def over_sample(X_train, y_train):
 def features_pipeline(index, X_train, y_train ,X_test, y_test, columns, row, spark, key=None, date=None, static_cols=[],
                       r=1, w=3, corr_per=0.9, oversample=True):
     """
-    running a problem
+    running a problemread_data
     :param index: the index of the sampled from the original dataset - int
     :param df: the learning dataset to perform explain over - Dataframe
     :param X_test: the test dataset - Dataframe
@@ -384,7 +389,7 @@ def features_pipeline(index, X_train, y_train ,X_test, y_test, columns, row, spa
     time_in_minutes = (finish_time - start_time) / 60
     if not os.path.exists("preprocess_results/"):
         os.mkdir("preprocess_results/")
-    io.BytesIO().dump((row["target"], index, time_in_minutes, pipeline_feat), open(file_name, "wb"))
+    save(open(file_name, "wb"), (row["target"], index, time_in_minutes, pipeline_feat))
     if oversample and row["type"] == "classification":
         X_train, y_train = over_sample(X_train, y_train)
     spark_df_joined = spark.createDataFrame(X_train)
@@ -399,3 +404,14 @@ def features_pipeline(index, X_train, y_train ,X_test, y_test, columns, row, spa
     x = (row["target"], index, X_train, y_train.values, X_test, y_test.values, time_in_minutes, pipeline_feat)
     return x
 
+
+def read_data(target, keys, spark):
+
+    file_name = "preprocess_results/preprocess_pipeline_{}.p".format(target)
+    target, index, time_in_minutes, pipeline_feat = load(open(file_name, "rb"))
+    X_train = spark.sql("select * from preprocess_results.X_train_{}".format(target)).toPandas().set_index(keys)
+    y_train = spark.sql("select * from preprocess_results.y_train_{}".format(target)).toPandas().values.flatten()
+    X_test = spark.sql("select * from preprocess_results.X_test_{}".format(target)).toPandas().set_index(keys)
+    y_test = spark.sql("select * from preprocess_results.y_test_{}".format(target)).toPandas().values.flatten()
+
+    return target, index, X_train, y_train, X_test, y_test, time_in_minutes, pipeline_feat

@@ -3,7 +3,8 @@ import numpy as np
 import os
 from tensorflow.compat.v1.keras import backend as K
 import json
-os.system("taskset -p 0xff %d" % os.getpid())
+import io
+import joblib
 
 
 def recall_m(y_true, y_pred):
@@ -141,3 +142,28 @@ def string_2json(x):
         return x
     except Exception as e:
         print(e)
+
+
+def save(bytes_container: io.BytesIO, o):
+    """
+
+    :param bytes_container:
+    :return:
+    """
+    #dump model
+    byte_io = io.BytesIO()
+    joblib.dump(o, byte_io)
+    pack = {'class_dict':  {'a': 12231},
+            'model': byte_io.getvalue()}
+    joblib.dump(pack, bytes_container)
+
+
+def load(bytes_container: io.BytesIO):
+    """
+
+    :param bytes_container:
+    :return:
+    """
+    pack = joblib.load(bytes_container)
+    o = joblib.load(io.BytesIO(pack))
+    return o

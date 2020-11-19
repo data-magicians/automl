@@ -24,3 +24,5 @@ if __name__ == "__main__":
     aml.train()
     aml.evaluate()
     aml.explain()
+    aml.get_best_preprocess()
+    aml.get_best_model()
