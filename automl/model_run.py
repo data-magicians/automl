@@ -213,68 +213,6 @@ def model_pipeline_run(index, model, params, X_train, y_train, X_test, y_test, m
         print(e)
 
 
-def features_pipeline(index, X_train, y_train ,X_test, y_test, columns, row, key=None, date=None, static_cols=[],
-                      r=1, w=3, corr_per=0.9, oversample=True):
-    """
-    running a problem
-    :param index: the index of the sampled from the original dataset - int
-    :param df: the learning dataset to perform explain over - Dataframe
-    :param X_test: the test dataset - Dataframe
-    :param y_test: the test target - Dataframe
-    :param columns: the columns dictionary - dictionary where each key has list of features names - dictionary
-    :return: a list of one tuple with results and information about the model_pipeline_run run
-    """
-    start_time = time.time()
-    # X_train = df.drop(columns["target"][0], axis=1)
-    # y_train = df[columns["target"][0]]
-    file_name = "preprocess_results/preprocess_pipeline_{}.p".format(row["target"])
-    # pre proccess pipeline stages
-    clear_stage = ClearNoCategoriesTransformer(categorical_cols=columns["categoric"])
-    imputer = ImputeTransformer(numerical_cols=columns["numeric"], categorical_cols=columns["categoric"],
-                                strategy="time_series", key_field=key, date_field=date)
-    outliers = OutliersTransformer(numerical_cols=columns["numeric"], categorical_cols=columns["categoric"])
-    scale = ScalingTransformer(numerical_cols=columns["numeric"])
-    if row["type"] == "classification":
-        categorize = CategorizeByTargetTransformer(categorical_cols=columns["categoric"])
-    else:
-        categorize = CategorizingTransformer(categorical_cols=columns["categoric"])
-    chisquare = ChiSquareTransformer(categorical_cols=columns["categoric"], numerical_cols=columns["numeric"])
-    correlations = CorrelationTransformer(numerical_cols=columns["numeric"], categorical_cols=columns["categoric"],
-                                          target=columns["target"], threshold=corr_per)
-    dummies = DummiesTransformer(columns["categoric"])
-    timeseries = TimeSeriesTransformer(key=key, date=date, key_col=X_train.reset_index()[key], date_col=X_train.reset_index()[date],
-                                       split_y=False, static_cols=static_cols, r=r, w=w, target=columns["target"][0])
-    steps_feat = [("clear_non_variance", clear_stage),
-                  ("imputer", imputer),
-                  ("outliers", outliers),
-                  ("scaling", scale),
-                  ("chisquare", chisquare),
-                  ("correlations", correlations),
-                  ("categorize", categorize),
-                  ("dummies", dummies),
-                  ("timeseries", timeseries)]
-    if key is None:
-        steps_feat = steps_feat[:-1]
-    pipeline_feat = Pipeline(steps=steps_feat)
-    pipeline_feat = pipeline_feat.fit(X_train, y_train)
-    X_train = pipeline_feat.transform(X_train)
-    X_test = pipeline_feat.transform(X_test)
-    finish_time = time.time()
-    time_in_minutes = (finish_time - start_time) / 60
-    if not os.path.exists("preprocess_results/"):
-        os.mkdir("preprocess_results/")
-    pickle.dump((row["target"], index, time_in_minutes, pipeline_feat), open(file_name, "wb"))
-    if oversample and row["type"] == "classification":
-        X_train, y_train = over_sample(X_train, y_train)
-    X_train.to_csv("preprocess_results/X_train_{}.csv".format(row["target"]))
-    y_train.to_csv("preprocess_results/y_train_{}.csv".format(row["target"]), index=False)
-    X_test.to_csv("preprocess_results/X_test_{}.csv".format(row["target"]))
-    y_test.to_csv("preprocess_results/y_test_{}.csv".format(row["target"]), index=False)
-
-    x = (row["target"], index, X_train, y_train.values, X_test, y_test.values, time_in_minutes, pipeline_feat)
-    return x
-
-
 def deeplearning(shape, dropout=0.5, lr=0.1, l1=0.1, l2=0.1, n_hidden_layers=3, num_neurons=512,
                  num_classes=1, type="classification", activation="relu"):
     """
