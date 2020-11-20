@@ -353,7 +353,7 @@ def features_pipeline(index, X_train, y_train ,X_test, y_test, columns, row, spa
     start_time = time.time()
     # X_train = df.drop(columns["target"][0], axis=1)
     # y_train = df[columns["target"][0]]
-    file_name = "preprocess_results/preprocess_pipeline_{}.p".format(row["target"])
+    file_name = "preprocess_results/preprocess_pipeline_{}".format(row["target"])
     # pre proccess pipeline stages
     clear_stage = ClearNoCategoriesTransformer(categorical_cols=columns["categoric"])
     imputer = ImputeTransformer(numerical_cols=columns["numeric"], categorical_cols=columns["categoric"],

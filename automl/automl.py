@@ -6,6 +6,7 @@ import sys
 import random
 from automl.dev_tools import *
 
+
 class AutoML:
 
     logging.basicConfig(format='%(asctime)s     %(levelname)-8s %(message)s',
@@ -96,8 +97,11 @@ class AutoML:
         params = json.loads(open("params.json").read())
         problems = params["problems"]
         models_names = params["models_names"]
+        best_score = None
+        best_model = None
 
         for i, p in enumerate(problems):
+
             if p["type"] == "classification":
                 models = [GaussianNB(), LogisticRegression(n_jobs=-1), KNeighborsClassifier(n_jobs=-1),
                           RandomForestClassifier(n_jobs=-1), MLPClassifier(), svm.LinearSVC()]
@@ -123,21 +127,8 @@ class AutoML:
                         os.mkdir(path + "/results")
                     for row in results:
                         try:
-                            if "dl" not in models_names[index]:
-                                file = "/results/model_results_{}_{}.p".format(folder, models_names[index])
-                                save(open(path + file, "wb"), row["grid"])
-                            else:
-                                file = "/results/model_result_{}_{}.yaml".format(folder, models_names[index])
-                                grid = row["grid"].best_estimator_.steps[0][1].model.save(path + file)
-                                model_b = grid.best_estimator_.model
-                                model_yaml = model_b.to_yaml()
-                                with open(file, "w") as yaml_file:
-                                    yaml_file.write(model_yaml)
-                                # serialize weights to HDF5
-                                file = "/results/model_result_{}_{}.h5".format(folder, models_names[index])
-                                model_b.save_weights(file)
+                            save(open(path + file, "wb"), row["grid"])
                             del row["grid"]
-                            del grid
                         except Exception as e:
                             print(e)
                     file = "/results/model_results_{}.csv".format(folder)
@@ -157,18 +148,51 @@ class AutoML:
                         js["report"] = js["report"].apply(string_2json).to_dict(orient="records")[0]
                         js = js.to_dict(orient="records")[0]
                         save(js, open("results/model_results_{}_{}.json".format(folder, models_names[index]), "w"))
+                    if p["type"] == "regression":
+                        if best_score is None or best_score < js["refort"]["test_r2_score"]:
+                            best_model = path + file
+                            best_score = js["refort"]["test_r2_score"]
+                    else:
+                        if best_score is None or best_score < js["refort"]["weighted avg_test"]["f1-score"]:
+                            best_model = path + file
+                            best_score = js["refort"]["weighted avg_test"]["f1-score"]
 
-    def get_best_model(self):
+            save(js, open(best_model + "best_model", "w"))
 
-        pass
 
-    def evaluate(self):
+    @staticmethod
+    def get_best_models():
 
-        pass
+        files = os.listdir("results/")
+        files_best = [f.replace("best_model", "") for f in files if "best_model" in f]
+        models = []
+        for f in files_best:
+            models.append(load(f))
+        return models
 
-    def get_metrics(self):
 
-        pass
+    @staticmethod
+    def get_preprocess_pipeline():
+
+        os.chdir(os.path.dirname(os.path.realpath(__file__)))
+        params = json.loads(open("params.json").read())
+        problems = params["problems"]
+        pipelines = []
+        for p in problems:
+            file_name = "preprocess_results/preprocess_pipeline_{}".format(p["target"])
+            pipelines.append(load(file_name))
+
+
+    @staticmethod
+    def get_evaluation():
+
+        files = os.listdir("results/")
+        files_best = [f for f in files if "best_model" in f]
+        evaluations = []
+        for f in files_best:
+            evaluations.append(load(open(f, "w")))
+        return evaluations
+
 
     def explain(self):
 
