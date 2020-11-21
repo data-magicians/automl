@@ -357,7 +357,7 @@ def features_pipeline(index, X_train, y_train ,X_test, y_test, columns, row, spa
     # pre proccess pipeline stages
     clear_stage = ClearNoCategoriesTransformer(categorical_cols=columns["categoric"])
     imputer = ImputeTransformer(numerical_cols=columns["numeric"], categorical_cols=columns["categoric"],
-                                strategy="time_series", key_field=key, date_field=date)
+                                strategy="time_series", key_field=key, date_field=date, parallel=True)
     outliers = OutliersTransformer(numerical_cols=columns["numeric"], categorical_cols=columns["categoric"])
     scale = ScalingTransformer(numerical_cols=columns["numeric"])
     if row["type"] == "classification":
@@ -376,7 +376,7 @@ def features_pipeline(index, X_train, y_train ,X_test, y_test, columns, row, spa
                   ("scaling", scale),
                   ("chisquare", chisquare),
                   ("correlations", correlations),
-                  ("categorize", categorize),
+                  # ("categorize", categorize),
                   ("dummies", dummies),
                   ("timeseries", timeseries)]
     if key is None:

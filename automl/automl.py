@@ -23,25 +23,28 @@ class AutoML:
         self._X_return = None
 
 
-    def create_panel(self):
+    def create_panel(self, test=True):
         """
         create data panel
         """
         params = json.loads(open("params.json", "rb").read())
         get_data_params = params["raw_data"]
-        data = get_data()
-        logging.info("Data tables loaded: " + " ".join(list(data.keys())))
-        dates_df = create_dates_table(get_data_params["start_date"], get_data_params["end_date"])
-        logging.info("Dates table loaded with " + get_data_params["start_date"] + " to " + get_data_params["end_date"] + " and in shape of " + str(dates_df.shape))
-        trans_df = feature_engineering_transactions(data["trans_train"], dates_df)
-        logging.info("Trans table feature engineering complete with shape of" + str(trans_df.shape))
-        df = clean_and_join_other_data(data)
-        logging.info("Main df table feature engineering complete with shape of" + str(df.shape))
-        df_joined = join_data_final(df, trans_df, data)
-        logging.info("Final joined df complete with shape of" + str(df_joined.shape))
-        spark_df_joined = self.session.createDataFrame(df_joined)
-        spark_df_joined.createOrReplaceTempView(params["raw_data"]["raw_data_name"])
-
+        if test == False:
+            data = get_data()
+            logging.info("Data tables loaded: " + " ".join(list(data.keys())))
+            dates_df = create_dates_table(get_data_params["start_date"], get_data_params["end_date"])
+            logging.info("Dates table loaded with " + get_data_params["start_date"] + " to " + get_data_params["end_date"] + " and in shape of " + str(dates_df.shape))
+            trans_df = feature_engineering_transactions(data["trans_train"], dates_df)
+            logging.info("Trans table feature engineering complete with shape of" + str(trans_df.shape))
+            df = clean_and_join_other_data(data)
+            logging.info("Main df table feature engineering complete with shape of" + str(df.shape))
+            df_joined = join_data_final(df, trans_df, data)
+            logging.info("Final joined df complete with shape of" + str(df_joined.shape))
+            spark_df_joined = self.session.createDataFrame(df_joined)
+            spark_df_joined.createOrReplaceTempView(params["raw_data"]["raw_data_name"])
+        else:
+            spark_df_joined = self.session.read.option("header", "true").csv("df_joined.csv")
+            spark_df_joined.createOrReplaceTempView(params["raw_data"]["raw_data_name"])
 
     def get_raw_data(self):
 

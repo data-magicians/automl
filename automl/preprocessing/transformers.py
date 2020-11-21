@@ -15,7 +15,13 @@ from sklearn.feature_selection import chi2
 # for stop seeing unnecessary messages
 pd.options.mode.chained_assignment = None
 os.system("taskset -p 0xff %d" % os.getpid())
+import logging
 
+
+logging.basicConfig(format='%(asctime)s     %(levelname)-8s %(message)s',
+                    datefmt='%Y-%m-%d %H:%M:%S',
+                    stream=sys.stdout,
+                    level='INFO')
 
 def init(l, df):
     """
@@ -26,6 +32,24 @@ def init(l, df):
     global lock, df_temp
     lock = l
     df_temp = df
+
+
+def try_this(x):
+
+    doing(*x)
+
+
+def doing(key, key_field, date_field, fill_end):
+
+    dir_path = os.path.dirname(os.path.realpath(__file__))
+    X_t = df_temp[df_temp[key_field] == key].sort_values(by=date_field)
+    X_t = X_t.fillna(method="ffill").fillna(method="bfill").fillna(fill_end)
+    lock.acquire()
+    if not os.path.exists(dir_path + "/data.csv"):
+        X_t.to_csv(dir_path + "/data.csv")
+    else:
+        X_t.to_csv(dir_path + "/data.csv", mode="a", header=False)
+    lock.release()
 
 
 class CustomTransformer(BaseEstimator, TransformerMixin):
@@ -115,8 +139,8 @@ class ClearNoCategoriesTransformer(CustomTransformer):
             for col in cols:
                 self._clear(df, col)
         except Exception as e:
-            print(e)
-        print("ClearNoCategoriesTransformer fit end")
+            logging.info(e)
+        logging.info("ClearNoCategoriesTransformer fit end")
         return self
 
     def transform(self, X, y=None, **kwargs):
@@ -130,7 +154,7 @@ class ClearNoCategoriesTransformer(CustomTransformer):
         if not isinstance(X, pd.DataFrame):
             X = pd.DataFrame(X, columns=self._columns, copy=True)
         columns = [col for col in X.columns if col not in self.remove]
-        print("ClearNoCategoriesTransformer transform end")
+        logging.info("ClearNoCategoriesTransformer transform end")
         return X[columns]
 
 
@@ -139,7 +163,7 @@ class ImputeTransformer(CustomTransformer):
     transformer that deals with missing values for each column passed by transforming them and adding a new indicator
     column that indicates which value was imputed
     """
-    def __init__(self, numerical_cols=[], categorical_cols=[], strategy='zero', key_field=None, date_field=None, fill_end=-1):
+    def __init__(self, numerical_cols=[], categorical_cols=[], strategy='zero', key_field=None, date_field=None, fill_end=-1, parallel=False):
         """
         constructor
         :param numerical_cols: the numerical columns to check for missing values over - list
@@ -156,6 +180,7 @@ class ImputeTransformer(CustomTransformer):
         self.numerical_cols = numerical_cols
         self.categorical_cols = categorical_cols
         self.fill_end = fill_end
+        self.parallel = parallel
 
     def fit(self, X, y=None, **kwargs):
         """
@@ -184,6 +209,7 @@ class ImputeTransformer(CustomTransformer):
         :param kwargs: free parameters - dictionary
         :return: X: the transformed data - Dataframe
         """
+        dir_path = os.path.dirname(os.path.realpath(__file__))
         for col in self.numerical_cols:
             nulls = X[col].isnull()
             missing_ind_name = col + '_was_missing'
@@ -195,25 +221,35 @@ class ImputeTransformer(CustomTransformer):
         if self.strategy == "time_series":
             X = X.reset_index()
             keys = X[self.key_field].unique().tolist()
-            dir_path = os.path.dirname(os.path.realpath(__file__))
-            try:
+            if self.parallel:
                 if os.path.exists(dir_path + "/data.csv"):
                     os.remove(dir_path + "/data.csv")
-            except Exception as e:
-                pass
-            for key in keys:
-                X_t = X[X[self.key_field] == key].sort_values(by=self.date_field)
-                X_t = X_t.fillna(method="ffill").fillna(method="bfill").fillna(self.fill_end)
-                if not os.path.exists(dir_path + "/data.csv"):
-                    X_t.to_csv(dir_path + "/data.csv")
-                else:
-                    X_t.to_csv(dir_path + "/data.csv", mode="a", header=False)
-            X = pd.read_csv(dir_path + "/data.csv", low_memory=False)
-            os.remove(dir_path + "/data.csv")
+                lock = mp.Lock()
+                pool = mp.Pool(mp.cpu_count(), initializer=init, initargs=(lock, X.copy(True)))
+                # pool = mp.Pool(mp.cpu_count())
+                pool.map_async(try_this, [(key, self.key_field, self.date_field, self.fill_end) for key in keys])
+                pool.close()
+                pool.join()
+            else:
+                try:
+                    if os.path.exists(dir_path + "/data.csv"):
+                        os.remove(dir_path + "/data.csv")
+                except Exception as e:
+                    pass
+                for key in keys:
+                    X_t = X[X[self.key_field] == key].sort_values(by=self.date_field)
+                    X_t = X_t.fillna(method="ffill").fillna(method="bfill").fillna(self.fill_end)
+                    if not os.path.exists(dir_path + "/data.csv"):
+                        X_t.to_csv(dir_path + "/data.csv")
+                    else:
+                        X_t.to_csv(dir_path + "/data.csv", mode="a", header=False)
             try:
-                X = X.sort_values(by='Unnamed: 0').drop('Unnamed: 0', axis=1).reset_index(drop=True)
+                X = pd.read_csv(dir_path + "/data.csv", low_memory=False)
             except Exception as e:
-                pass
+                os.remove(dir_path + "/data.csv")
+                raise e
+            os.remove(dir_path + "/data.csv")
+            X = X.sort_values(by='Unnamed: 0').drop('Unnamed: 0', axis=1).reset_index(drop=True)
             X = X.set_index([self.key_field, self.date_field])
 
         elif self.strategy not in ["zero", "time_series"]:
@@ -343,11 +379,11 @@ class OutliersTransformer(CustomTransformer):
                         X = self._fix(X, col)
                 return col, X[col]
             except Exception as e:
-                print(e)
+                logging.info(e)
                 return None
         except Exception as e:
-            print("there is an error in dbscan:")
-            print(e)
+            logging.info("there is an error in dbscan:")
+            logging.info(e)
             return None
 
     def fit(self, X, y=None, **kwargs):
@@ -362,16 +398,19 @@ class OutliersTransformer(CustomTransformer):
             cols_to_iterate = [col for col in self.numerical_cols if col in X.columns]
             for col in cols_to_iterate:
                 descriptive = X[col].dropna().describe()
-                iqr = (descriptive["75%"] - descriptive["25%"])
+                try:
+                    iqr = (descriptive["75%"] - descriptive["25%"])
+                except Exception as e:
+                    print(e)
                 self.cols_borders[col] = dict(min_v=-self.magnitude * iqr + descriptive["50%"],
                                               max_v=self.magnitude * iqr + descriptive["50%"])
-            print("OutliersTransformer fit end")
+            logging.info("OutliersTransformer fit end")
             return self
         else:
             self.numerical_cols = [col for col in self.numerical_cols if col in X.columns]
             self.categorical_cols = [col for col in self.categorical_cols if col in X.columns]
             self.outliers = {col: self._hdbscan(X, col) for col in self.numerical_cols}
-            print("OutliersTransformer fit end")
+            logging.info("OutliersTransformer fit end")
 
     def _iqr(self, x, min_v, max_v, col):
 
@@ -413,7 +452,7 @@ class OutliersTransformer(CustomTransformer):
             for result in results:
                 if result is not None:
                     X[result["col"]] = result["col_df"]
-        print("OutliersTransformer transform end")
+        logging.info("OutliersTransformer transform end")
         return X
 
 
@@ -444,7 +483,7 @@ class ScalingTransformer(CustomTransformer):
             self.scaler = MinMaxScaler()
             self.scaler.fit(X[cols])
         self.columns = X.columns
-        print("ScalingTransformer fit end")
+        logging.info("ScalingTransformer fit end")
         return self
 
     def transform(self, X, y=None, **kwargs):
@@ -462,7 +501,7 @@ class ScalingTransformer(CustomTransformer):
         cols = [col for col in self.numerical_cols if col in df.columns]
         if len(cols) > 0:
             df[cols] = self.scaler.transform(X[cols])
-        print("ScalingTransformer transform end")
+        logging.info("ScalingTransformer transform end")
         return df
 
 
@@ -547,7 +586,7 @@ class CategorizingTransformer(CustomTransformer):
         """
         self.categorical_cols = [col for col in X.columns if col in self.categorical_cols or "_was_missing" in col or
                                  "_has_outliers" in col]
-        print("CategorizingTransformer fit end")
+        logging.info("CategorizingTransformer fit end")
         return self
 
     def transform(self, X, y=None, **kwargs):
@@ -573,7 +612,7 @@ class CategorizingTransformer(CustomTransformer):
                 temp = {}
 
         self.categorical_cols = cat_dic
-        print("CategorizingTransformer transform end")
+        logging.info("CategorizingTransformer transform end")
         return X_copy
 
 
@@ -613,7 +652,7 @@ class CategorizeByTargetTransformer(CustomTransformer):
             else:
                 raise Exception("y is not a DataFrame or Series, please pass y typed Series to the function")
         except Exception as e:
-            print(e)
+            logging.info(e)
         try:
             re = pd.crosstab(X, target, rownames=['X'], colnames=['target'], margins=True)
         except Exception as e:
@@ -678,7 +717,7 @@ class CategorizeByTargetTransformer(CustomTransformer):
                 left_cols = [col for col in columns if col not in drop_out]
                 for colu in left_cols:
                     self.names[col][colu] = colu
-        print("CategorizeByTargetTransformer fit end")
+        logging.info("CategorizeByTargetTransformer fit end")
         return self
 
     def transform(self, X, y=None, **kwargs):
@@ -697,7 +736,7 @@ class CategorizeByTargetTransformer(CustomTransformer):
             keys = self.names[col].keys()
             df[col] = df[col].apply(lambda x: self.names[col][str(x).replace(" ", "")] if str(x).replace(" ", "") in
                                                                                           keys else x)
-        print("CategorizeByTargetTransformer transform end")
+        logging.info("CategorizeByTargetTransformer transform end")
         return df
 
 
@@ -755,7 +794,7 @@ class CorrelationTransformer(CustomTransformer):
         """
         self.categorical_cols = [col for col in X.columns if col in self.categorical_cols or "_was_missing" in col or
                                  "_has_outliers" in col]
-        print("CorrelationTransformer fit end")
+        logging.info("CorrelationTransformer fit end")
         return self
 
     def transform(self, X, y=None, **kwargs):
@@ -776,18 +815,18 @@ class CorrelationTransformer(CustomTransformer):
             try:
                 stayed = self._remove_correlated_features(corr)
             except Exception as e:
-                print("can't correlate this")
-                print("this is the exception")
+                logging.info("can't correlate this")
+                logging.info("this is the exception")
                 stayed = corr.columns
-                print(e)
+                logging.info(e)
             self.columns_stay = [col for col in stayed if col in df.columns]
             self.numerical_cols = [col for col in self.numerical_cols if col in self.columns_stay]
             self.categorical_cols = [col for col in self.categorical_cols if col in self.columns_stay]
             self.fit_first = False
         cols = [col for col in self.columns_stay if col in X.columns]
-        print("CorrelationTransformer transform end")
+        logging.info("CorrelationTransformer transform end")
         if len(cols) == 0:
-            print("can't remove features, only few remained")
+            logging.info("can't remove features, only few remained")
             return X
         else:
             return X[cols]
@@ -826,16 +865,16 @@ class ChiSquareTransformer(CustomTransformer):
                                  "_has_outliers" in col]
         try:
             if y.unique().shape[0] > self.y_threshold:
-                print("too much values in target")
-                print("ChiSquareTransformer fit end")
+                logging.info("too much values in target")
+                logging.info("ChiSquareTransformer fit end")
                 return self
         except Exception as e:
-            print("ChiSquareTransformer fit end")
+            logging.info("ChiSquareTransformer fit end")
             return self
         try:
             chi_scores = chi2(X[self.categorical_cols], y)
         except Exception as e:
-            print("ChiSquareTransformer fit end")
+            logging.info("ChiSquareTransformer fit end")
             return self
         p_values = pd.Series(chi_scores[1], index=self.categorical_cols)
         p_values.sort_values(ascending=True, inplace=True)
@@ -846,7 +885,7 @@ class ChiSquareTransformer(CustomTransformer):
         else:
             self.columns_stay = list(chi_squers[p_values.apply(lambda x: x <= self.alpha).values == True].index)
         self.columns_stay += self.numerical_cols
-        print("ChiSquareTransformer fit end")
+        logging.info("ChiSquareTransformer fit end")
         return self
 
     def transform(self, X, y=None, **kwargs):
@@ -860,14 +899,14 @@ class ChiSquareTransformer(CustomTransformer):
         try:
             cols = [col for col in self.columns_stay if col in X.columns]
             if len(cols) == 0:
-                print("can't remove features, only few remained")
-                print("ChiSquareTransformer transform end")
+                logging.info("can't remove features, only few remained")
+                logging.info("ChiSquareTransformer transform end")
                 return X
             else:
-                print("ChiSquareTransformer transform end")
+                logging.info("ChiSquareTransformer transform end")
                 return X[cols]
         except Exception as e:
-            print("ChiSquareTransformer transform end")
+            logging.info("ChiSquareTransformer transform end")
             return X
 
 
@@ -899,7 +938,7 @@ class LabelEncoderTransformer(CustomTransformer):
         cols = [col for col in self.categorical_cols if col in X.columns]
         self.labels = {col: {"labeler": LabelEncoder().fit(X[col].astype("str")),
                              "uniques": X[col].astype("str").unique()} for col in cols}
-        print("LabelEncoderTransformer fit end")
+        logging.info("LabelEncoderTransformer fit end")
         return self
 
     def _labeler(self, col):
@@ -924,7 +963,7 @@ class LabelEncoderTransformer(CustomTransformer):
             X = pd.DataFrame(X, columns=self._columns, copy=True)
         cols = [col for col in self.categorical_cols if col in X.columns]
         X.loc[:, cols] = X[cols].apply(lambda col: self._labeler(col), axis=0)
-        print("LabelEncoderTransformer transform end")
+        logging.info("LabelEncoderTransformer transform end")
         return X
 
 
@@ -958,9 +997,9 @@ class DummiesTransformer(CustomTransformer):
                                                                                    columns=self.categorical_cols,
                                                                                    drop_first=True)], axis=1)
         except Exception as e:
-            print(e)
+            logging.info(e)
         self.cols_name_after = df.columns
-        print("DummiesTransformer fit end")
+        logging.info("DummiesTransformer fit end")
         return self
 
     def transform(self, X, y=None, **kwargs):
@@ -983,10 +1022,10 @@ class DummiesTransformer(CustomTransformer):
                 df[col] = 0
             if self.final_cols is None:
                 self.final_cols = cols_out + cols_complete
-            print("DummiesTransformer transform end")
+            logging.info("DummiesTransformer transform end")
             return df[self.final_cols]
         else:
-            print("DummiesTransformer transform end")
+            logging.info("DummiesTransformer transform end")
             return df
 
 
@@ -1029,7 +1068,7 @@ class TimeSeriesTransformer(CustomTransformer):
         :param kwargs: free parameters - dictionary
         :return: self - the class object - an instance of the transformer - Transformer
         """
-        print("TimeSeriesTransformer fit end")
+        logging.info("TimeSeriesTransformer fit end")
         return self
 
     def transform(self, X, y=None, **kwargs):
@@ -1057,6 +1096,6 @@ class TimeSeriesTransformer(CustomTransformer):
                 dfs.append(df_t)
             df = pd.concat(dfs)
             df.set_index([self.key, self.date], inplace=True)
-            print("TimeSeriesTransformer transform end")
+            logging.info("TimeSeriesTransformer transform end")
             # return df.drop_duplicates()
             return df
