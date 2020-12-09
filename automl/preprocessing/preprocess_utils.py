@@ -353,11 +353,11 @@ def features_pipeline(index, X_train, y_train ,X_test, y_test, columns, row, spa
     start_time = time.time()
     # X_train = df.drop(columns["target"][0], axis=1)
     # y_train = df[columns["target"][0]]
-    file_name = "preprocess_results/preprocess_pipeline_{}.p".format(row["target"])
+    file_name = "preprocess_results/preprocess_pipeline_{}".format(row["target"])
     # pre proccess pipeline stages
     clear_stage = ClearNoCategoriesTransformer(categorical_cols=columns["categoric"])
     imputer = ImputeTransformer(numerical_cols=columns["numeric"], categorical_cols=columns["categoric"],
-                                strategy="time_series", key_field=key, date_field=date)
+                                strategy="time_series", key_field=key, date_field=date, parallel=True)
     outliers = OutliersTransformer(numerical_cols=columns["numeric"], categorical_cols=columns["categoric"])
     scale = ScalingTransformer(numerical_cols=columns["numeric"])
     if row["type"] == "classification":
@@ -376,7 +376,7 @@ def features_pipeline(index, X_train, y_train ,X_test, y_test, columns, row, spa
                   ("scaling", scale),
                   ("chisquare", chisquare),
                   ("correlations", correlations),
-                  ("categorize", categorize),
+                  # ("categorize", categorize),
                   ("dummies", dummies),
                   ("timeseries", timeseries)]
     if key is None:
@@ -392,14 +392,15 @@ def features_pipeline(index, X_train, y_train ,X_test, y_test, columns, row, spa
     save(open(file_name, "wb"), (row["target"], index, time_in_minutes, pipeline_feat))
     if oversample and row["type"] == "classification":
         X_train, y_train = over_sample(X_train, y_train)
-    spark_df_joined = spark.createDataFrame(X_train)
-    spark_df_joined.createOrReplaceTempView("preprocess_results.X_train_{}".format(row["target"]))
-    spark_df_joined = spark.createDataFrame(X_train)
-    spark_df_joined.createOrReplaceTempView("preprocess_results.y_train_{}.csv".format(row["target"]))
-    spark_df_joined = spark.createDataFrame(X_train)
-    spark_df_joined.createOrReplaceTempView("preprocess_results.X_test_{}.csv".format(row["target"]))
-    spark_df_joined = spark.createDataFrame(X_train)
-    spark_df_joined.createOrReplaceTempView("preprocess_results.y_test_{}.csv".format(row["target"]))
+    #todo change this so it will save the data as a table inside the spark session
+    # spark_df_joined = spark.createDataFrame(X_train)
+    # spark_df_joined.createOrReplaceTempView("preprocess_results.X_train_{}".format(row["target"]))
+    # spark_df_joined = spark.createDataFrame(y_train)
+    # spark_df_joined.createOrReplaceTempView("preprocess_results.y_train_{}.csv".format(row["target"]))
+    # spark_df_joined = spark.createDataFrame(X_train)
+    # spark_df_joined.createOrReplaceTempView("preprocess_results.X_test_{}.csv".format(row["target"]))
+    # spark_df_joined = spark.createDataFrame(X_train)
+    # spark_df_joined.createOrReplaceTempView("preprocess_results.y_test_{}.csv".format(row["target"]))
 
     x = (row["target"], index, X_train, y_train.values, X_test, y_test.values, time_in_minutes, pipeline_feat)
     return x
