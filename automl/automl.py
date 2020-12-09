@@ -29,7 +29,7 @@ class AutoML:
         """
         params = json.loads(open("params.json", "rb").read())
         get_data_params = params["raw_data"]
-        if test == False:
+        if not  test:
             data = get_data()
             logging.info("Data tables loaded: " + " ".join(list(data.keys())))
             dates_df = create_dates_table(get_data_params["start_date"], get_data_params["end_date"])
@@ -51,7 +51,7 @@ class AutoML:
         return self.session.sql("select * from spark_df_joined")
 
 
-    def preprocess_data(self):
+    def preprocess_data(self, only_one_return=True):
 
         os.chdir(os.path.dirname(os.path.realpath(__file__)))
         params = json.loads(open("params.json").read())
@@ -60,7 +60,10 @@ class AutoML:
         key_cols = params["key_cols"]
         problems = params["problems"]
         target_cols = [t["target"] for t in problems]
-        df = self.session.sql("select * from spark_df_joined").toPandas()
+        # todo remove the pandas and uncomment the spark to pandas
+        # df = self.session.sql("select * from spark_df_joined").toPandas()
+        # df = pd.read_csv('C:\\Users\\yossi\\PycharmProjects\\automl\\test\\df_joined.csv').head(10000)
+        df = pd.read_csv('C:\\Users\\yossi\\PycharmProjects\\automl\\test\\df_joined.csv')
         columns = get_cols(df, key_cols + target_cols + exclude_cols, cols_per)
         logging.info("finish get cols")
         columns["key"] = key_cols
@@ -85,13 +88,26 @@ class AutoML:
             y_test = df_test[p["target"]]
             x = features_pipeline(i, X_train, y_train, X_test, y_test, columns, p, self.session, key=key_cols[0], date=key_cols[1])
             X_return.append(x)
+            if only_one_return:
+                return X_return
         self._X_return = X_return
         return X_return
 
 
-    def get_data_after_preprocess(self):
+    def get_data_after_preprocess(self, row, spark=False):
 
-        return self._X_return
+        if spark:
+            X_train = self.session.sql("select * from preprocess_results.X_train_{}".format(row["target"]))
+            y_train = self.session.sql("select * from preprocess_results.y_train_{}.csv".format(row["target"]))
+            X_test = self.session.sql("select * from preprocess_results.X_test_{}.csv".format(row["target"]))
+            y_test = self.session.sql("select * from preprocess_results.y_test_{}.csv".format(row["target"]))
+        else:
+            X_train = pd.read_csv("preprocess_results/X_train_{}.csv".format(row["target"]))
+            y_train = pd.read_csv("preprocess_results/y_train_{}.csv".format(row["target"])).values.flatten()
+            X_test = pd.read_csv("preprocess_results/X_test_{}.csv".format(row["target"]))
+            y_test = pd.read_csv("preprocess_results/y_test_{}.csv".format(row["target"])).values.flatten()
+
+        return X_train, y_train, X_test, y_test
 
 
     def train(self):
@@ -119,7 +135,14 @@ class AutoML:
                 # KerasRegressor(build_fn=deeplearning, type="regression", verbose=1),
                 # KerasRegressor(build_fn=deeplearning_rnn, type="regression", verbose=1),
                 # KerasRegressor(build_fn=deeplearning_cnn, type="regression", verbose=1)]
-            x = self._X_return[i]
+            try:
+                m = len(self._X_return)
+            except Exception as e:
+                self.get_preprocess_pipeline()
+                m = len(self._X_return)
+            x = self._X_return[min([i, m])]
+            X_train, y_train, X_test, y_test = self.get_data_after_preprocess(p)
+            x = (x[0], x[1], X_train, y_train, X_test, y_test, x[2], x[3])
             for index, model in enumerate(models):
                 models_2_run = [(x[1], model, params["hyperparameters"][p["type"]][models_names[index]], x[2], x[3], x[4], x[5], models_names[index], x[6], p["type"])]
                 results = [model_pipeline_run_unpack(x) for x in models_2_run]
@@ -130,6 +153,7 @@ class AutoML:
                         os.mkdir(path + "/results")
                     for row in results:
                         try:
+                            file = "/results/model_results_{}_{}".format(folder, models_names[index])
                             save(open(path + file, "wb"), row["grid"])
                             del row["grid"]
                         except Exception as e:
@@ -142,7 +166,7 @@ class AutoML:
                         os.remove(path + file)
                         js["report"] = js["report"].apply(string_2json)
                         js = js.to_dict(orient="records")[0]
-                        save(js, open("results/model_results_{}_{}.json".format(folder, models_names[index]), "w"))
+                        json.dump(js, open("results/model_results_{}_{}.json".format(folder, models_names[index]), "w"))
                     else:
                         d = pd.DataFrame([r for r in results if r is not None])
                         d.to_csv(path + file, index=False).to_csv(path + file, index=False, mode="a", header=False)
@@ -150,21 +174,21 @@ class AutoML:
                         os.remove(path + file)
                         js["report"] = js["report"].apply(string_2json).to_dict(orient="records")[0]
                         js = js.to_dict(orient="records")[0]
-                        save(js, open("results/model_results_{}_{}.json".format(folder, models_names[index]), "w"))
+                        json.dump(js, open("results/model_results_{}_{}.json".format(folder, models_names[index]), "w"))
                     if p["type"] == "regression":
-                        if best_score is None or best_score < js["refort"]["test_r2_score"]:
+                        if best_score is None or best_score < js["report"]["test_r2_score"]:
                             best_model = path + file
-                            best_score = js["refort"]["test_r2_score"]
+                            best_score = js["report"]["test_r2_score"]
                     else:
-                        if best_score is None or best_score < js["refort"]["weighted avg_test"]["f1-score"]:
+                        if best_score is None or best_score < js["report"]["weighted avg_test"]["f1-score"]:
                             best_model = path + file
-                            best_score = js["refort"]["weighted avg_test"]["f1-score"]
+                            best_score = js["report"]["weighted avg_test"]["f1-score"]
 
-            save(js, open(best_model + "best_model", "w"))
+            save(open(best_model + "best_model", "w"), js)
 
 
     @staticmethod
-    def get_best_models():
+    def get_best_model():
 
         files = os.listdir("results/")
         files_best = [f.replace("best_model", "") for f in files if "best_model" in f]
@@ -174,8 +198,7 @@ class AutoML:
         return models
 
 
-    @staticmethod
-    def get_preprocess_pipeline():
+    def get_preprocess_pipeline(self):
 
         os.chdir(os.path.dirname(os.path.realpath(__file__)))
         params = json.loads(open("params.json").read())
@@ -183,7 +206,12 @@ class AutoML:
         pipelines = []
         for p in problems:
             file_name = "preprocess_results/preprocess_pipeline_{}".format(p["target"])
-            pipelines.append(load(file_name))
+            try:
+                pipelines.append(load(file_name))
+            except Exception as e:
+                pass
+        self._X_return = pipelines
+        return pipelines
 
 
     @staticmethod

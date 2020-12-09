@@ -17,6 +17,12 @@ import re
 from sklearn.preprocessing import LabelEncoder
 import shap
 import matplotlib.pyplot as plt
+from sklearn.neural_network import MLPClassifier, MLPRegressor
+from sklearn.linear_model import LogisticRegression, ElasticNet
+from sklearn.neighbors import KNeighborsClassifier, KNeighborsRegressor
+from sklearn.naive_bayes import GaussianNB
+from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
+from sklearn import svm
 
 
 def model_pipeline_run_unpack(args):
@@ -175,7 +181,7 @@ def model_pipeline_run(index, model, params, X_train, y_train, X_test, y_test, m
             elif "dl" in model_name:
                 n_jobs = None
                 params["classifier__shape"] = [X_train.shape[1]]
-            if isinstance(y_test[0], (str)):
+            if isinstance(y_test, (str)):
                 try:
                     y_train = np.asarray(list(map(lambda x: int(re.search("[0-9]+", x).group()), y_train)))
                     y_test = np.asarray(list(map(lambda x: int(re.search("[0-9]+", x).group()), y_test)))

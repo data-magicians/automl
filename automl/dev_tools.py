@@ -165,5 +165,5 @@ def load(bytes_container: io.BytesIO):
     :return:
     """
     pack = joblib.load(bytes_container)
-    o = joblib.load(io.BytesIO(pack))
+    o = joblib.load(io.BytesIO(pack["model"]))
     return o

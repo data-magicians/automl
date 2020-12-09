@@ -34,6 +34,16 @@ def init(l, df):
     df_temp = df
 
 
+def init_time_series(df):
+    """
+    used to prevent race conditions
+    :param l: the lock object to use for sync
+    :return: None
+    """
+    global df_temp
+    df_temp = df
+
+
 def try_this(x):
 
     doing(*x)
@@ -163,7 +173,7 @@ class ImputeTransformer(CustomTransformer):
     transformer that deals with missing values for each column passed by transforming them and adding a new indicator
     column that indicates which value was imputed
     """
-    def __init__(self, numerical_cols=[], categorical_cols=[], strategy='zero', key_field=None, date_field=None, fill_end=-1, parallel=False):
+    def __init__(self, numerical_cols=[], categorical_cols=[], strategy='negative', key_field=None, date_field=None, fill_end=-1, parallel=False):
         """
         constructor
         :param numerical_cols: the numerical columns to check for missing values over - list
@@ -218,6 +228,8 @@ class ImputeTransformer(CustomTransformer):
                 X[missing_ind_name] = nulls.values
                 if self.strategy == "zero":
                     X[col].fillna(0, inplace=True)
+                if self.strategy == "negative":
+                    X[col].fillna(-9999999999999, inplace=True)
         if self.strategy == "time_series":
             X = X.reset_index()
             keys = X[self.key_field].unique().tolist()
@@ -226,7 +238,6 @@ class ImputeTransformer(CustomTransformer):
                     os.remove(dir_path + "/data.csv")
                 lock = mp.Lock()
                 pool = mp.Pool(mp.cpu_count(), initializer=init, initargs=(lock, X.copy(True)))
-                # pool = mp.Pool(mp.cpu_count())
                 pool.map_async(try_this, [(key, self.key_field, self.date_field, self.fill_end) for key in keys])
                 pool.close()
                 pool.join()
@@ -811,6 +822,8 @@ class CorrelationTransformer(CustomTransformer):
             final_cols = [col for col in model_cols if col in df.columns]
             corr = df[final_cols].corr("spearman")
             if self.target[0] not in corr.columns:
+                logging.info("target not in correlation")
+                logging.info("CorrelationTransformer transform end")
                 return X
             try:
                 stayed = self._remove_correlated_features(corr)
@@ -824,11 +837,12 @@ class CorrelationTransformer(CustomTransformer):
             self.categorical_cols = [col for col in self.categorical_cols if col in self.columns_stay]
             self.fit_first = False
         cols = [col for col in self.columns_stay if col in X.columns]
-        logging.info("CorrelationTransformer transform end")
         if len(cols) == 0:
+            logging.info("CorrelationTransformer transform end")
             logging.info("can't remove features, only few remained")
             return X
         else:
+            logging.info("CorrelationTransformer transform end")
             return X[cols]
 
 
@@ -1029,6 +1043,35 @@ class DummiesTransformer(CustomTransformer):
             return df
 
 
+def time_series_parallel_unpack(args):
+    """
+
+    :param args:
+    :return:
+    """
+    return time_series_parallel(*args)
+
+
+def time_series_parallel(df_name, key, date, target, static_cols, w, r):
+    """
+
+    :param df_name:
+    :param key:
+    :param date:
+    :param target:
+    :param static_cols:
+    :param w:
+    :param r:
+    :return:
+    """
+    dff = df_temp[df_temp[key] == df_name].sort_values(by=date, ascending=True)
+    df_t = series_to_supervised(dff.drop([key, date], axis=1), target=target, static_cols=static_cols, w=w, r=r,
+                                dropnan=False)
+    df_t[key] = dff[key]
+    df_t[date] = dff[date]
+    return df_t
+
+
 class TimeSeriesTransformer(CustomTransformer):
     """
     Transformer that performs time series data preparation
@@ -1071,6 +1114,7 @@ class TimeSeriesTransformer(CustomTransformer):
         logging.info("TimeSeriesTransformer fit end")
         return self
 
+
     def transform(self, X, y=None, **kwargs):
         """
         transform the data to the time series data
@@ -1086,16 +1130,19 @@ class TimeSeriesTransformer(CustomTransformer):
             # df[self.date] = self.kwargs["date_col"]
         if self.method == "window":
             df_names = df[self.key].unique()
-            dfs = []
-            for df_name in df_names:
-                dff = df[df[self.key] == df_name].sort_values(by=self.date, ascending=True)
-                df_t = series_to_supervised(dff.drop([self.key, self.date], axis=1), target=self.target,
-                                            static_cols=self.static_cols, w=self.w, r=self.r, dropnan=False)
-                df_t[self.key] = df[self.key]
-                df_t[self.date] = df[self.date]
-                dfs.append(df_t)
+            # dfs = []
+            # for df_name in df_names:
+            #     dff = df[df[self.key] == df_name].sort_values(by=self.date, ascending=True)
+            #     df_t = series_to_supervised(dff.drop([self.key, self.date], axis=1), target=self.target,
+            #                                 static_cols=self.static_cols, w=self.w, r=self.r, dropnan=False)
+            #     df_t[self.key] = df[self.key]
+            #     df_t[self.date] = df[self.date]
+            #     dfs.append(df_t)
+            pool = mp.Pool(mp.cpu_count(), initializer=init_time_series, initargs=(df,))
+            dfs = pool.map_async(time_series_parallel_unpack, [(df_name, self.key, self.date, self.target, self.static_cols, self.w, self.r) for df_name in df_names]).get()
+            pool.close()
+            pool.join()
             df = pd.concat(dfs)
             df.set_index([self.key, self.date], inplace=True)
             logging.info("TimeSeriesTransformer transform end")
-            # return df.drop_duplicates()
             return df

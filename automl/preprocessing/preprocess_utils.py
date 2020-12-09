@@ -392,14 +392,15 @@ def features_pipeline(index, X_train, y_train ,X_test, y_test, columns, row, spa
     save(open(file_name, "wb"), (row["target"], index, time_in_minutes, pipeline_feat))
     if oversample and row["type"] == "classification":
         X_train, y_train = over_sample(X_train, y_train)
-    spark_df_joined = spark.createDataFrame(X_train)
-    spark_df_joined.createOrReplaceTempView("preprocess_results.X_train_{}".format(row["target"]))
-    spark_df_joined = spark.createDataFrame(X_train)
-    spark_df_joined.createOrReplaceTempView("preprocess_results.y_train_{}.csv".format(row["target"]))
-    spark_df_joined = spark.createDataFrame(X_train)
-    spark_df_joined.createOrReplaceTempView("preprocess_results.X_test_{}.csv".format(row["target"]))
-    spark_df_joined = spark.createDataFrame(X_train)
-    spark_df_joined.createOrReplaceTempView("preprocess_results.y_test_{}.csv".format(row["target"]))
+    #todo change this so it will save the data as a table inside the spark session
+    # spark_df_joined = spark.createDataFrame(X_train)
+    # spark_df_joined.createOrReplaceTempView("preprocess_results.X_train_{}".format(row["target"]))
+    # spark_df_joined = spark.createDataFrame(y_train)
+    # spark_df_joined.createOrReplaceTempView("preprocess_results.y_train_{}.csv".format(row["target"]))
+    # spark_df_joined = spark.createDataFrame(X_train)
+    # spark_df_joined.createOrReplaceTempView("preprocess_results.X_test_{}.csv".format(row["target"]))
+    # spark_df_joined = spark.createDataFrame(X_train)
+    # spark_df_joined.createOrReplaceTempView("preprocess_results.y_test_{}.csv".format(row["target"]))
 
     x = (row["target"], index, X_train, y_train.values, X_test, y_test.values, time_in_minutes, pipeline_feat)
     return x

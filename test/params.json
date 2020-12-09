@@ -130,7 +130,7 @@
     }
   },
   "train_test_per": 0.7,
-  "cols_per": 0.05,
+  "cols_per": 0.01,
   "raw_data": {
     "start_date": "1993-01-01",
     "end_date": "1997-12-31",
