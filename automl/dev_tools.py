@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import os
+import pickle
 from tensorflow.compat.v1.keras import backend as K
 import json
 import io
@@ -158,12 +159,16 @@ def save(bytes_container: io.BytesIO, o):
     joblib.dump(pack, bytes_container)
 
 
-def load(bytes_container: io.BytesIO):
+def load(bytes_container: io.BytesIO, test=None):
     """
 
     :param bytes_container:
+    :param test:
     :return:
     """
-    pack = joblib.load(bytes_container)
-    o = joblib.load(io.BytesIO(pack["model"]))
-    return o
+    if test is None:
+        pack = joblib.load(bytes_container)
+        o = joblib.load(io.BytesIO(pack["model"]))
+        return o
+    else:
+        return pickle.load(bytes_container)

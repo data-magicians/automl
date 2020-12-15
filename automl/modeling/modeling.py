@@ -378,17 +378,18 @@ def best_t(precisions, recalls, thresholds):
     return thresholds[np.argmax(f1)]
 
 
-def shap_analysis(df, shap_values, id_field_name="", entitis=[]):
+def shap_analysis(df, shap_values, id_field_name="", entitis=[], nlargest=200, number_of_features_use=10):
     # create a small df with only x amount of customers for shap explanation
 
+    shap_values = pd.DataFrame(shap_values)
     # we need to look at absolute values
     shap_feature_df_abs = shap_values.abs()
     # Apply Decorate-Sort row-wise to our df, and slice the top-n columns within each row...
-    sort_decr2_topn = lambda row, nlargest=200: sorted(pd.Series(zip(shap_feature_df_abs.columns, row)),
+    sort_decr2_topn = lambda row, nlargest=nlargest: sorted(pd.Series(zip(shap_feature_df_abs.columns, row)),
                                                        key=lambda cv: -cv[1])[:nlargest]
     tmp = shap_feature_df_abs.apply(sort_decr2_topn, axis=1)
     # then your result (as a pandas DataFrame) is...
-    np.array(tmp)
+    # np.array(tmp)
     list_of_user_dfs = []
 
     for i in range(0, len(entitis)):
@@ -396,8 +397,8 @@ def shap_analysis(df, shap_values, id_field_name="", entitis=[]):
         weights_one_user = tmp[i]
         # add weight
         user_weight_df = pd.DataFrame(weights_one_user)
-        user_weight_df.columns = ["feature", "weight_val"]
-        user_weight_df = user_weight_df.sort_values(by="feature", ascending=False)
+        user_weight_df.columns = ["feature_num", "weight_val"]
+        user_weight_df = user_weight_df.sort_values(by="feature_num", ascending=False)
         user_weight_df['sum'] = user_weight_df['weight_val'].sum()
         user_weight_df['weight'] = user_weight_df['weight_val'] / user_weight_df['sum']
         user_weight_df['weight'] = user_weight_df['weight'].round(2)
@@ -408,104 +409,18 @@ def shap_analysis(df, shap_values, id_field_name="", entitis=[]):
         user_original_values = df[df[id_field_name].isin([one_user_id])]
         user_original_values = user_original_values.T.reset_index()
         user_original_values.columns = ["feature", "feature_value"]
+        df_features = pd.DataFrame([(i, v) for i, v in enumerate(df.columns)], columns=["feature_num", "feature"])
+        user_weight_df = df_features.merge(user_weight_df, on=["feature_num"]).drop("feature_num", axis=1)
         user_weight_df = pd.merge(user_weight_df, user_original_values, on="feature")
         # rank the feature weight
         user_weight_df["feature_rank"] = user_weight_df.index + 1
         # add user id
         user_weight_df[id_field_name] = one_user_id
-        number_of_features_use = 10
         user_weight_df = user_weight_df[user_weight_df["feature_rank"] <= number_of_features_use]
         list_of_user_dfs.append(user_weight_df)
-        final_shap_df_1 = pd.concat(list_of_user_dfs)
-        return final_shap_df_1
 
-
-def explain(model, data, model_name, target, key_cols=[], shap_function=False, shap_exist=False, global_explain=False):
-
-    if model_name in ["rf", "xgboost"]:
-        if data is None:
-            data = pd.read_csv("preprocess_results/X_test_{}.csv".format(target), nrows=2)
-        if model is None:
-            model = pickle.load(open("results/model_results_{}_{}.p".format(target, model_name), "rb"))
-        if not shap_function:
-            features = list(data.columns[2:])
-            importances = model.best_estimator_.steps[-1][-1].feature_importances_
-            indices = np.argsort(importances)[-20:]
-            plt.figure(1)
-            plt.title('Feature Importances')
-            plt.barh(range(len(indices)), importances[indices], color='b', align='center')
-            plt.yticks(range(len(indices)), [features[i] for i in indices])
-            plt.xlabel('Relative Importance')
-            plt.show()
-            indices = indices[::-1]
-            df = pd.DataFrame([(a, b) for a,b in zip(importances[indices], [features[i] for i in indices])], columns=["importance", "feature"])
-            if not os.path.exists("explain"):
-                os.mkdir("explain/")
-            df.to_csv("explain/{}_{}.csv".format(target, model_name), index=False)
-        else:
-            if shap_exist:
-                try:
-                    # model = pickle.load(open("results/model_results_target_amount_knn_1.p", "rb")).best_estimator_.steps[-1][-1]
-                    shap_val = pickle.load(open("results/shap_val_{}_{}.p".format(target, model_name), "rb"))
-                    # data = pickle.load(open("data.p", "rb"))
-                    ex = shap.KernelExplainer(model, data)
-                except Exception as e:
-                    print(e)
-            else:
-                model = pickle.load(open("results/model_results_{}_{}.p".format(target, model_name), "rb")).best_estimator_.steps[-1][-1]
-                ex = shap.KernelExplainer(model.predict, data.sample(frac=0.1))
-                shap_val = ex.shap_values(data.sample(frac=0.1))
-                shap_val = np.array(shap_val)
-                shap_val = np.reshape(shap_val, (int(shap_val.shape[0]), int(shap_val.shape[1])))
-                pickle.dump(shap_val, open("results/shap_val_{}_{}.p".format(target, model_name), "wb"))
-                shap_analysis(data, shap_val, key_cols[0], data[key_cols[0]].unique().tolist())
-            if global_explain:
-                columns = data.columns
-                # shap_val = shap_val.reshape((int(shap_val[0].shape[0]), int(shap_val[0].shape[1]), int(shap_val[0].shape[2])))
-                # shap_val = np.reshape(np.asarray(shap_val), (int(shap_val[0].shape[0]), int(shap_val[0].shape[1]), len(shap_val)))
-                # shap.image_plot(shap_val, data_s, show=False)
-                index = 3
-                n = 20
-                corr_index = 0
-                columns_short = columns[index:]
-                # columns_short = [col for col in columns_short if "SUM_OF_INTERNET_YEAR_ADVANCED_INCOME" not in col.upper() and "SUM_OF_PPA_INCOME" not in col.upper()]
-                columns_short_index = []
-                for i, v in enumerate(columns):
-                    if v in columns_short:
-                        columns_short_index.append(i)
-                abs_sum = np.abs(shap_val[:, columns_short_index]).sum(axis=(0, 1))
-                regular_sum = shap_val[:, columns_short_index].sum(axis=(0, 1))
-                mean_ = shap_val[:, columns_short_index].mean(axis=(0, 1))
-                arg_min = abs_sum.argmin()
-                arg_max = abs_sum.argmax()
-                best_min = columns_short[arg_min]
-                best_max = columns_short[arg_max]
-                idx = (-abs_sum).argsort()[:n]
-                # cols_s = [col.split("_VERTICAL_ID")[0] for col in columns_short]
-                cols_s = columns_short
-                best_features_sum = [abs_sum[i] for i in idx]
-                best_features_regular_sum = [regular_sum[i] for i in idx]
-                best_features_mean = [mean_[i] for i in idx]
-                best_features = [cols_s[i] for i in idx]
-                ############################################ check ######################################
-                plt.figure()
-                corrs = {}
-                for i in idx:
-                    corr = np.corrcoef(shap_val[:, columns_short_index][:, i].sum(axis=1),
-                                       data[:, columns_short_index][:, i].sum(axis=1))
-                    corrs[cols_s[i]] = corr[0, 1] if not np.isnan(corr[0, 1]) else 0
-                ax = pd.Series(best_features_sum, index=best_features).plot(kind='barh',
-                                                                            color=['red' if corr > 0 else 'blue' for
-                                                                                   corr in corrs.values()],
-                                                                            x='Variable', y='SHAP_abs')
-                ax.set_xlabel("SHAP Value (Red = Positive Impact) model: {} target: {}".format(target, model_name))
-                plt.show()
-                shap.summary_plot(shap_val[:, index:].sum(axis=1),
-                                  pd.DataFrame(data[:, index:].sum(axis=1), columns=cols_s))
-                plt.show()
-                shap.dependence_plot(columns[idx[0]], shap_val[:, :], pd.DataFrame(data[:, :], columns=columns[:]))
-                plt.show()
-                print(1)
+    final_shap_df_1 = pd.concat(list_of_user_dfs)
+    return final_shap_df_1
 
 
 def plot_roc(model, y_test, y_score):
