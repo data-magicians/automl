@@ -207,7 +207,7 @@ class ImputeTransformer(CustomTransformer):
             self.imp = SimpleImputer(strategy=self.strategy)
             self.imp.fit(X[self.numerical_cols])
             self.statistics_ = pd.Series(self.imp.statistics_, index=X[self.numerical_cols].columns)
-        print("ImputeTransformer fit end")
+        logging.info("ImputeTransformer fit end")
         return self
 
     def transform(self, X, y=None, **kwargs):
@@ -267,7 +267,7 @@ class ImputeTransformer(CustomTransformer):
             Ximp = self.imp.transform(X[self.numerical_cols])
             Xfilled = pd.DataFrame(Ximp, index=X[self.numerical_cols].index, columns=X[self.numerical_cols].columns)
             X[self.numerical_cols] = Xfilled
-        print("ImputeTransformer transform end")
+        logging.info("ImputeTransformer transform end")
         return X
 
 
@@ -412,7 +412,7 @@ class OutliersTransformer(CustomTransformer):
                 try:
                     iqr = (descriptive["75%"] - descriptive["25%"])
                 except Exception as e:
-                    print(e)
+                    logging.info(e)
                 self.cols_borders[col] = dict(min_v=-self.magnitude * iqr + descriptive["50%"],
                                               max_v=self.magnitude * iqr + descriptive["50%"])
             logging.info("OutliersTransformer fit end")
@@ -720,7 +720,8 @@ class CategorizeByTargetTransformer(CustomTransformer):
                 columns = re.T.columns.tolist()
                 drop_out = []
                 self.names[col] = {}
-                for subgraph in networkx.connected_component_subgraphs(g):
+                for c in networkx.connected_components(g):
+                    subgraph = g.subgraph(c)
                     category = '-'.join([str(x) for x in subgraph.nodes()])
                     for node in subgraph.nodes():
                         self.names[col][str(node).replace(" ", "")] = category
@@ -1113,7 +1114,6 @@ class TimeSeriesTransformer(CustomTransformer):
         """
         logging.info("TimeSeriesTransformer fit end")
         return self
-
 
     def transform(self, X, y=None, **kwargs):
         """

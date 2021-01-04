@@ -39,7 +39,7 @@ def series_to_supervised(data, w=5, r=1, dropnan=True, target=None, cols_remove=
     :param static_cols:
     :return:
     """
-    df = pd.DataFrame(data)
+    df = data
     columns = [col for col in df.columns if col not in cols_remove]
     cols, names = list(), list()
     # input sequence (t-n, ... t-1)
@@ -50,7 +50,7 @@ def series_to_supervised(data, w=5, r=1, dropnan=True, target=None, cols_remove=
     for i in range(0, r):
         cols.append(df.shift(-i))
         if i == 0:
-            names += [('{}(t)'.format(j)) for j in columns]
+            names += list(columns)
         else:
             names += [('{}(t+{})'.format(j, i)) for j in columns]
     # put it all together
@@ -97,7 +97,7 @@ def is_date(df, col, string_ratio=0.02):
     return True
 
 
-def get_cols(df, exclude=[], ratio=0.01, key_cols=[]):
+def get_cols(df, exclude=[], ratio=0.1, key_cols=[]):
     """
     finds the different types of features automatically
     :param df: the dataframe to check for columns - Dataframe

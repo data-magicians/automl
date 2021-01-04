@@ -23,8 +23,9 @@ if __name__ == "__main__":
     schema = None
     aml = AutoML(spark, mapping, schema)
     # aml.create_panel()
-    # aml.preprocess_data()
+    aml.preprocess_data(only_one_return=False)
     aml.train()
-    aml.evaluate()
-    aml.explain()
-    aml.get_best_model()
+    _, _, X, _ = aml.get_data_after_preprocess({"target": "target_loan"})
+    X = X.groupby(["account_id"]).last().reset_index()
+    predictions = aml.predict(X)
+    aml.explain(X)

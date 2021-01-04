@@ -13,6 +13,7 @@ logging.basicConfig(format='%(asctime)s     %(levelname)-8s %(message)s',
                     stream=sys.stdout,
                     level='INFO')
 
+
 def get_data():
 
     raw_data_files = os.listdir(os.getcwd()+"/raw_data")
@@ -340,7 +341,7 @@ def over_sample(X_train, y_train):
 
 
 def features_pipeline(index, X_train, y_train ,X_test, y_test, columns, row, spark, key=None, date=None, static_cols=[],
-                      r=1, w=3, corr_per=0.9, oversample=True):
+                      r=1, w=2, corr_per=0.7, oversample=True):
     """
     running a problemread_data
     :param index: the index of the sampled from the original dataset - int
@@ -376,7 +377,7 @@ def features_pipeline(index, X_train, y_train ,X_test, y_test, columns, row, spa
                   ("scaling", scale),
                   ("chisquare", chisquare),
                   ("correlations", correlations),
-                  # ("categorize", categorize),
+                  ("categorize", categorize),
                   ("dummies", dummies),
                   ("timeseries", timeseries)]
     if key is None:
@@ -401,7 +402,10 @@ def features_pipeline(index, X_train, y_train ,X_test, y_test, columns, row, spa
     # spark_df_joined.createOrReplaceTempView("preprocess_results.X_test_{}.csv".format(row["target"]))
     # spark_df_joined = spark.createDataFrame(X_train)
     # spark_df_joined.createOrReplaceTempView("preprocess_results.y_test_{}.csv".format(row["target"]))
-
+    X_train.reset_index().to_csv("preprocess_results/X_train_{}.csv".format(row["target"]), index=False)
+    y_train.to_csv("preprocess_results/y_train_{}.csv".format(row["target"]), index=False)
+    X_test.reset_index().to_csv("preprocess_results/X_test_{}.csv".format(row["target"]), index=False)
+    y_test.to_csv("preprocess_results/y_test_{}.csv".format(row["target"]), index=False)
     x = (row["target"], index, X_train, y_train.values, X_test, y_test.values, time_in_minutes, pipeline_feat)
     return x
 
