@@ -14,12 +14,13 @@ class AutoML:
                         stream=sys.stdout,
                         level='INFO')
 
-    def __init__(self, session, schema, mapping):
+    def __init__(self, session, schema, mapping, problem):
 
         self.session = session
         self.schema = schema
         self.mapping = mapping
         self._data_ready = True
+        self.problem = problem
         self._X_return = None
 
     def create_panel(self, test=True):
@@ -56,7 +57,7 @@ class AutoML:
         cols_per = params["cols_per"]
         exclude_cols = params["exclude_cols"]
         key_cols = params["key_cols"]
-        problems = params["problems"]
+        problems = [x for x in params["problems"] if x in x["target"]]
         target_cols = [t["target"] for t in problems]
         # todo remove the pandas and uncomment the spark to pandas
         # df = self.session.sql("select * from spark_df_joined").toPandas()
@@ -96,6 +97,9 @@ class AutoML:
 
         """
         path = os.path.dirname(__file__)
+        params = json.loads(open(path + "/params.json").read())
+        key_cols = params["key_cols"]
+
         if spark:
             X_train = self.session.sql("select * from preprocess_results.X_train_{}".format(row["target"]))
             y_train = self.session.sql("select * from preprocess_results.y_train_{}.csv".format(row["target"]))
@@ -107,6 +111,9 @@ class AutoML:
             X_test = pd.read_csv(path + "/preprocess_results/X_test_{}.csv".format(row["target"]))
             y_test = pd.read_csv(path + "/preprocess_results/y_test_{}.csv".format(row["target"])).values.flatten()
 
+        X_train = X_train.set_index(key_cols)
+        X_test = X_test.set_index(key_cols)
+
         return X_train, y_train, X_test, y_test
 
     def train(self):
@@ -115,14 +122,12 @@ class AutoML:
         """
         os.chdir(os.path.dirname(os.path.realpath(__file__)))
         params = json.loads(open("params.json").read())
-        problems = params["problems"]
+        problems = [x for x in params["problems"] if x in x["target"]]
         models_names = params["models_names"]
-        key_cols = params["key_cols"]
-        best_score = None
-        best_model = None
 
         for i, p in enumerate(problems):
-
+            best_score = None
+            best_model = None
             if p["type"] == "classification":
                 models = [GaussianNB(), LogisticRegression(n_jobs=-1), KNeighborsClassifier(n_jobs=-1),
                           RandomForestClassifier(n_jobs=-1), MLPClassifier(), svm.LinearSVC()]
@@ -144,8 +149,6 @@ class AutoML:
                 m = len(self._X_return)
             x = self._X_return[min([i, max([m - 1, 0])])]
             X_train, y_train, X_test, y_test = self.get_data_after_preprocess(p)
-            X_train = X_train.set_index(key_cols)
-            X_test = X_test.set_index(key_cols)
             x = (x[0], x[1], X_train, y_train, X_test, y_test, x[2], x[3])
             for index, model in enumerate(models):
                 models_2_run = [(x[1], model, params["hyperparameters"][p["type"]][models_names[index]], x[2], x[3], x[4], x[5], models_names[index], x[6], p["type"])]
@@ -213,12 +216,11 @@ class AutoML:
         else:
             return models, files_best, metrics
 
-
     def get_preprocess_pipeline(self):
 
         os.chdir(os.path.dirname(os.path.realpath(__file__)))
         params = json.loads(open("params.json").read())
-        problems = params["problems"]
+        problems = [x for x in params["problems"] if x in x["target"]]
         pipelines = []
         for p in problems:
             file_name = "preprocess_results/preprocess_pipeline_{}".format(p["target"])
@@ -228,7 +230,6 @@ class AutoML:
                 pass
         self._X_return = pipelines
         return pipelines
-
 
     @staticmethod
     def get_evaluation():
@@ -243,7 +244,7 @@ class AutoML:
 
     def predict(self, X):
 
-        model = self.get_best_model()[0]
+        model = self.get_best_model()
         return model.predict(X)
 
 
@@ -296,7 +297,7 @@ class AutoML:
         target = "_".join(model_names[0].split("_")[-3:-1])
         df_metrics = pd.io.json.json_normalize(metrics[0]["report"])
         if model_name in ["rf", "xgboost"]:
-            features = list(data.columns[2:])
+            features = list(data.columns)
             importances = model.best_estimator_.steps[-1][-1].feature_importances_
             indices = np.argsort(importances)[-top_n:]
             plt.figure(2)

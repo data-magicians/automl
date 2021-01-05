@@ -130,14 +130,14 @@
     }
   },
   "train_test_per": 0.7,
-  "cols_per": 0.005,
+  "cols_per": 0.01,
   "raw_data": {
     "start_date": "1993-01-01",
     "end_date": "1997-12-31",
-    "raw_data_name": "spark_df_joined"
+    "raw_data_name": "df_joined"
   },
   "models_names": ["nb", "lr", "knn", "rf", "mlp", "svm", "xgb", "dl", "dl-rnn", "dl-cnn"],
   "exclude_cols": [],
   "key_cols": ["account_id", "monthtable_rownumber"],
-  "problems": [{"target": "target_loan", "type": "classification"},  {"target": "target_amount", "type": "regression"}]
+  "problems": [{"target": "target_loan", "type": "classification"},  {"target": "target_amount", "type": "regression"}, {"target": "target_churn", "type": "classification"}]
 }

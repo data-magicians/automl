@@ -1,7 +1,6 @@
 from sklearn.base import TransformerMixin, BaseEstimator
 from sklearn.preprocessing import LabelEncoder, MinMaxScaler
 from sklearn.impute import SimpleImputer
-# from sklearn.preprocessing import Imputer
 import sys
 sys.path.append("/home/ec2-user/TCM")
 from automl.dev_tools import series_to_supervised
@@ -16,6 +15,7 @@ from sklearn.feature_selection import chi2
 pd.options.mode.chained_assignment = None
 os.system("taskset -p 0xff %d" % os.getpid())
 import logging
+# from sklearn.preprocessing import Imputer
 
 
 logging.basicConfig(format='%(asctime)s     %(levelname)-8s %(message)s',
@@ -1130,14 +1130,6 @@ class TimeSeriesTransformer(CustomTransformer):
             # df[self.date] = self.kwargs["date_col"]
         if self.method == "window":
             df_names = df[self.key].unique()
-            # dfs = []
-            # for df_name in df_names:
-            #     dff = df[df[self.key] == df_name].sort_values(by=self.date, ascending=True)
-            #     df_t = series_to_supervised(dff.drop([self.key, self.date], axis=1), target=self.target,
-            #                                 static_cols=self.static_cols, w=self.w, r=self.r, dropnan=False)
-            #     df_t[self.key] = df[self.key]
-            #     df_t[self.date] = df[self.date]
-            #     dfs.append(df_t)
             pool = mp.Pool(mp.cpu_count(), initializer=init_time_series, initargs=(df,))
             dfs = pool.map_async(time_series_parallel_unpack, [(df_name, self.key, self.date, self.target, self.static_cols, self.w, self.r) for df_name in df_names]).get()
             pool.close()
@@ -1146,3 +1138,59 @@ class TimeSeriesTransformer(CustomTransformer):
             df.set_index([self.key, self.date], inplace=True)
             logging.info("TimeSeriesTransformer transform end")
             return df
+
+
+class FeatureSelectionTransformer(CustomTransformer):
+    """
+    Transformer that performs time series data preparation
+    """
+    def __init__(self, target=None, top_n=100, keys=[], problem_type="classification"):
+        """
+        :param target:
+        :param method:
+        :param key:
+        :param date:
+        """
+        super(FeatureSelectionTransformer, self).__init__()
+        self.target = target
+        self.top_n = top_n
+        self.keys = keys
+        self.problem_type = problem_type
+        self.features = []
+
+
+    def fit(self, X, y=None, **kwargs):
+
+        """
+        return self no need to fit
+        :param X: features - Dataframe
+        :param y: target vector - Series
+        :param kwargs: free parameters - dictionary
+        :return: self - the class object - an instance of the transformer - Transformer
+        """
+        from xgboost import XGBRegressor, XGBClassifier
+        if self.problem_type == "classification":
+            xgb = XGBClassifier()
+        else:
+            xgb = XGBRegressor()
+        xgb.fit(X, y)
+        features = list(X.columns)
+        importances = xgb.feature_importances_
+        indices = np.argsort(importances)[-self.top_n:]
+        indices = indices[::-1]
+        df = pd.DataFrame([(a, b) for a, b in zip(importances[indices], [features[i] for i in indices])],
+                          columns=["importance", "feature"])
+        self.features = df["feature"].tolist()
+        logging.info("FeatureSelectionTransformer fit end")
+        return self
+
+    def transform(self, X, y=None, **kwargs):
+        """
+        transform the data to the time series data
+        :param X: features - Dataframe
+        :param y: target vector - Series
+        :param kwargs: free parameters - dictionary
+        :return: df: the transformed data - Dataframe
+        """
+        logging.info("FeatureSelectionTransformer transform end")
+        return X[self.features]

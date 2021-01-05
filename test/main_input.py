@@ -4,12 +4,12 @@ test input from datomize
 """
 from pyspark.sql.session import SparkSession
 from automl.automl import AutoML
-from google.protobuf.json_format import MessageToDict
 from pyspark import SparkConf
+from google.protobuf.json_format import MessageToDict
 # from automl.test import simple_pb2
 # import os
-# del os.environ['PYSPARK_SUBMIT_ARGS']
-# os.environ["JAVA_HOME"] = r'C:\Program Files\Java\jdk1.8.0'
+
+
 if __name__ == "__main__":
 
     sc_conf = SparkConf()
@@ -21,11 +21,11 @@ if __name__ == "__main__":
     # dict_obj = MessageToDict(simple_pb2)
     mapping = None
     schema = None
-    aml = AutoML(spark, mapping, schema)
+    aml = AutoML(spark, mapping, schema, "target_loan")
     # aml.create_panel()
-    aml.preprocess_data(only_one_return=False)
-    aml.train()
-    _, _, X, _ = aml.get_data_after_preprocess({"target": "target_loan"})
-    X = X.groupby(["account_id"]).last().reset_index()
+    # aml.preprocess_data()
+    # aml.train()
+    _, _, X, _ = aml.get_data_after_preprocess()
+    X = X.groupby(["account_id"]).last()
     predictions = aml.predict(X)
     aml.explain(X)
