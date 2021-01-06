@@ -25,7 +25,7 @@ if __name__ == "__main__":
     schema = None
     aml = AutoML(spark, mapping, schema)
     # aml.create_panel()
-    aml.preprocess_data()
+    # aml.preprocess_data()
     aml.train()
     _, _, X, _ = aml.get_data_after_preprocess({"target": "target_loan"})
     X = X.groupby(["account_id"]).last().reset_index()
