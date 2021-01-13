@@ -1,8 +1,8 @@
+from automl.dev_tools import get_cols
 import pandas as pd
 import random
 import json
 import numpy as np
-from automl.dev_tools import get_cols
 
 
 def churn_feature(s, decay, month_alpha):
@@ -30,15 +30,15 @@ def churn(x):
 
 if __name__ == "__main__":
 
-    sample_size = 0.03
-    cols_sample = 0.3
+    sample_size = 0.01
+    cols_sample = 0.1
     month_alpha = 2
     decay = 0.1
     target_col = "target_churn"
-    params = json.loads(open("params.json", "rb").read())
+    params = json.loads(open("test/params.json", "rb").read())
     key_cols = params["key_cols"]
 
-    df = pd.read_csv('C:\\Users\\Yossi\\PycharmProjects\\automl\\test\\df_joined.csv')
+    df = pd.read_csv('test/df_joined_old.csv')
     df = df.sort_values(key_cols, ascending=True)
     columns = get_cols(df)
     columns = columns["numeric"] + columns["categoric"]
@@ -47,6 +47,7 @@ if __name__ == "__main__":
     len(accounts)
     columns = [col for col in columns if random.random() < cols_sample]
     df_no_churn = df[~df["account_id"].isin(accounts)]
+    df_no_churn[target_col] = 0
     df_churn = df[df["account_id"].isin(accounts)]
     dfs = []
     for account in accounts:
@@ -58,5 +59,5 @@ if __name__ == "__main__":
     df_churn = pd.concat(dfs)
     check = df_churn[key_cols + columns]
     df = pd.concat([df_no_churn, df_churn])
-    df.to_csv('C:\\Users\\Yossi\\PycharmProjects\\automl\\test\\df_joined_all_3.csv', index=False)
+    df.to_csv('test/df_joined.csv', index=False)
     print(1)

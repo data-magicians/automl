@@ -85,3 +85,4 @@ wincertstore=0.2=py37_0
 wrapt=1.12.1=pypi_0
 xgboost=1.2.1=pypi_0
 zipp=3.4.0=pypi_0
+pip=19.1.1=pypi_0

@@ -7,7 +7,6 @@ from sklearn.model_selection import RandomizedSearchCV, KFold
 import time
 import pickle
 import gc
-# from keras import backend as backend
 from tensorflow.keras import models
 from tensorflow.keras import layers
 from tensorflow.keras import optimizers
@@ -23,6 +22,8 @@ from sklearn.neighbors import KNeighborsClassifier, KNeighborsRegressor
 from sklearn.naive_bayes import GaussianNB
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn import svm
+from xgboost import XGBRegressor, XGBClassifier
+# from keras import backend as backend
 
 
 def model_pipeline_run_unpack(args):
@@ -535,4 +536,3 @@ def load_model(path="results/"):
     loaded_model.load_weights("machine_learning/models/pl_sb_model/model_saved/model.h5")
     print("Loaded model from disk")
     return loaded_model
-
