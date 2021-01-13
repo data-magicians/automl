@@ -57,7 +57,7 @@ class AutoML:
         cols_per = params["cols_per"]
         exclude_cols = params["exclude_cols"]
         key_cols = params["key_cols"]
-        problems = [x for x in params["problems"] if x in x["target"]]
+        problems = [x for x in params["problems"] if self.problem in x["target"]]
         target_cols = [t["target"] for t in problems]
         # todo remove the pandas and uncomment the spark to pandas
         # df = self.session.sql("select * from spark_df_joined").toPandas()
@@ -92,13 +92,14 @@ class AutoML:
         self._X_return = X_return
         return X_return
 
-    def get_data_after_preprocess(self, row, spark=False):
+    def get_data_after_preprocess(self, spark=False):
         """
 
         """
         path = os.path.dirname(__file__)
         params = json.loads(open(path + "/params.json").read())
         key_cols = params["key_cols"]
+        row = [x for x in params["problems"] if self.problem in x["target"]][0]
 
         if spark:
             X_train = self.session.sql("select * from preprocess_results.X_train_{}".format(row["target"]))
@@ -122,12 +123,13 @@ class AutoML:
         """
         os.chdir(os.path.dirname(os.path.realpath(__file__)))
         params = json.loads(open("params.json").read())
-        problems = [x for x in params["problems"] if x in x["target"]]
+        problems = [x for x in params["problems"] if self.problem in x["target"]]
         models_names = params["models_names"]
 
         for i, p in enumerate(problems):
             best_score = None
             best_model = None
+            js_best = None
             if p["type"] == "classification":
                 models = [GaussianNB(), LogisticRegression(n_jobs=-1), KNeighborsClassifier(n_jobs=-1),
                           RandomForestClassifier(n_jobs=-1), MLPClassifier(), svm.LinearSVC()]
@@ -142,13 +144,8 @@ class AutoML:
                 # KerasRegressor(build_fn=deeplearning, type="regression", verbose=1),
                 # KerasRegressor(build_fn=deeplearning_rnn, type="regression", verbose=1),
                 # KerasRegressor(build_fn=deeplearning_cnn, type="regression", verbose=1)]
-            try:
-                m = len(self._X_return)
-            except Exception as e:
-                self.get_preprocess_pipeline()
-                m = len(self._X_return)
-            x = self._X_return[min([i, max([m - 1, 0])])]
-            X_train, y_train, X_test, y_test = self.get_data_after_preprocess(p)
+            x = self.get_preprocess_pipeline()
+            X_train, y_train, X_test, y_test = self.get_data_after_preprocess()
             x = (x[0], x[1], X_train, y_train, X_test, y_test, x[2], x[3])
             for index, model in enumerate(models):
                 models_2_run = [(x[1], model, params["hyperparameters"][p["type"]][models_names[index]], x[2], x[3], x[4], x[5], models_names[index], x[6], p["type"])]
@@ -192,67 +189,69 @@ class AutoML:
                         if best_score is None or best_score < js["report"]["test_r2_score"]:
                             best_model = "{}/{}".format(path, file)
                             best_score = js["report"]["test_r2_score"]
+                            js_best = js
                     else:
                         if best_score is None or best_score < js["report"]["macro avg_test"]["f1-score"]:
                             best_model = "{}/{}".format(path, file)
                             best_score = js["report"]["macro avg_test"]["f1-score"]
+                            js_best = js
             # save(open(best_model + "_best_model", "w"), js)
-            json.dump(js, open(best_model.split(".")[0] + "_best_model" + ".json", "w"))
+            json.dump(js_best, open(best_model.split(".")[0] + "_best_model" + ".json", "w"))
 
-    @staticmethod
-    def get_best_model(extra_data=False):
+    def get_best_model(self, extra_data=False, explain=False):
 
         path = os.path.dirname(os.path.realpath(__file__)) + "/results/"
         files = os.listdir(path)
-        files_best = [f.replace("_best_model.json", "") for f in files if "best_model" in f]
-        models = []
-        metrics = []
+        if explain:
+            files_best = [f.replace("_best_model.json", "") for f in files if "_rf" in f and self.problem in f and "json" not in f]
+        else:
+            files_best = [f.replace("_best_model.json", "") for f in files if "best_model" in f and self.problem in f]
+        model = None
+        metrics = None
         for f in files_best:
             # a = pickle.load(load(open(path + f, "rb")))
-            models.append(load(open(path + f, "rb")))
-            metrics.append(json.loads(open(path + f + ".json").read()))
+            model = load(open(path + f, "rb"))
+            metrics = json.loads(open(path + f + ".json").read())
         if not extra_data:
-            return models
+            return model
         else:
-            return models, files_best, metrics
+            return model, files_best[0], metrics
 
     def get_preprocess_pipeline(self):
 
-        os.chdir(os.path.dirname(os.path.realpath(__file__)))
-        params = json.loads(open("params.json").read())
-        problems = [x for x in params["problems"] if x in x["target"]]
-        pipelines = []
-        for p in problems:
-            file_name = "preprocess_results/preprocess_pipeline_{}".format(p["target"])
-            try:
-                pipelines.append(load(file_name))
-            except Exception as e:
-                pass
-        self._X_return = pipelines
-        return pipelines
+        path = os.path.dirname(os.path.realpath(__file__))
+        params = json.loads(open(path + "/params.json").read())
+        problem = [x for x in params["problems"] if self.problem in x["target"]][0]
+        pipeline = None
+        file_name = path + "/preprocess_results/preprocess_pipeline_{}".format(problem["target"])
+        try:
+            pipeline = load(file_name)
+        except Exception as e:
+            print("problem in get_preprocess_pipeline")
+            print(e)
+        self._X_return = pipeline
+        return pipeline
 
-    @staticmethod
-    def get_evaluation():
+    def get_evaluation(self):
 
         files = os.listdir("results/")
-        files_best = [f for f in files if "best_model" in f]
+        files_best = [f for f in files if "best_model" in f and self.problem in f]
         evaluations = []
         for f in files_best:
             evaluations.append(load(open(f, "w")))
         return evaluations
-
 
     def predict(self, X):
 
         model = self.get_best_model()
         return model.predict(X)
 
-
+    @staticmethod
     def shap_analysis(df, shap_values, id_field_name="", entitis=[]):
         # create a small df with only x amount of customers for shap explanation
 
         # we need to look at absolute values
-        shap_feature_df_abs = shap_values.abs()
+        shap_feature_df_abs = pd.DataFrame(shap_values).abs()
         # Apply Decorate-Sort row-wise to our df, and slice the top-n columns within each row...
         sort_decr2_topn = lambda row, nlargest=200: sorted(pd.Series(zip(shap_feature_df_abs.columns, row)),
                                                            key=lambda cv: -cv[1])[:nlargest]
@@ -274,6 +273,7 @@ class AutoML:
             del user_weight_df['sum']
             del user_weight_df['weight_val']
             user_weight_df = user_weight_df.sort_values(by="weight", ascending=False)
+            user_weight_df["feature"] = df.columns[user_weight_df["feature"].tolist()]
             # join original value
             user_original_values = df[df[id_field_name].isin([one_user_id])]
             user_original_values = user_original_values.T.reset_index()
@@ -291,18 +291,14 @@ class AutoML:
 
     def explain(self, data, shap_exist=False, global_explain=True, top_n=20):
 
-        models, model_names, metrics = self.get_best_model(True)
-        model = models[0]
-        model_name = model_names[0].split("_")[-1]
-        target = "_".join(model_names[0].split("_")[-3:-1])
-        df_metrics = pd.io.json.json_normalize(metrics[0]["report"])
+        model, model_name, metrics = self.get_best_model(True, True)
+        model_name = model_name.split("_")[-1]
+        target = self.problem
+        df_metrics = pd.io.json.json_normalize(metrics["report"])
         if model_name in ["rf", "xgboost"]:
             features = list(data.columns)
             importances = model.best_estimator_.steps[-1][-1].feature_importances_
             indices = np.argsort(importances)[-top_n:]
-            plt.figure(2)
-            plt.text(0, 0, s="\n".join([features[i] for i in indices[::-1]]))
-            plt.show()
             plt.figure(1)
             plt.title('Feature Importances')
             plt.yticks(range(len(indices)), [features[i] for i in indices], rotation=15, stretch=500)
@@ -332,7 +328,7 @@ class AutoML:
                 shap_val = ex.shap_values(data.values)
             pickle.dump(shap_val, open("automl/explain/shap_val_{}_{}.p".format(target, model_name), "wb"))
 
-        local_shap_df = shap_analysis(data, shap_val, data.columns[0], data[data.columns[0]].unique().tolist())
+        local_shap_df = self.shap_analysis(data, shap_val, data.columns[0], data[data.columns[0]].unique().tolist())
         local_shap_df.to_csv("automl/explain/local_shap_df.csv", index=False)
         if global_explain:
             columns = data.columns
@@ -373,7 +369,7 @@ class AutoML:
                                                                         color=['red' if corr > 0 else 'blue' for
                                                                                corr in corrs.values()],
                                                                         x='Variable', y='SHAP_abs')
-            ax.set_xlabel("SHAP Value (Red = Positive Impact) model: {} target: {}".format(target, model_name))
+            ax.set_xlabel("SHAP Value (Red = Positive Impact) model: {} target: {}".format(model_name, target))
             plt.show()
             # shap.summary_plot(shap_val[:, index:].sum(axis=1), pd.DataFrame(data.values[:, index:].sum(axis=1), columns=cols_s))
             # plt.show()

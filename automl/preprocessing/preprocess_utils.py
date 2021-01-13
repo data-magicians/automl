@@ -383,7 +383,7 @@ def features_pipeline(index, X_train, y_train ,X_test, y_test, columns, row, spa
                   ("correlations", correlations),
                   ("categorize", categorize),
                   ("dummies", dummies),
-                  # ("fselection", fselection),
+                  ("fselection", fselection),
                   ("timeseries", timeseries)]
     if key is None:
         steps_feat = steps_feat[:-1]

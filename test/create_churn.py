@@ -30,9 +30,9 @@ def churn(x):
 
 if __name__ == "__main__":
 
-    sample_size = 0.1
-    cols_sample = 0.4
-    month_alpha = 7
+    sample_size = 0.01
+    cols_sample = 0.1
+    month_alpha = 2
     decay = 0.1
     target_col = "target_churn"
     params = json.loads(open("test/params.json", "rb").read())
