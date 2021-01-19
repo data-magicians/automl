@@ -366,9 +366,9 @@ def features_pipeline(index, X_train, y_train ,X_test, y_test, columns, row, spa
     else:
         categorize = CategorizingTransformer(categorical_cols=columns["categoric"])
     if row["type"] == "classification":
-        fselection = FeatureSelectionTransformer(keys=columns["key"])
+        fselection = FeatureSelectionTransformer(keys=columns["key"], top_n=50)
     else:
-        fselection = FeatureSelectionTransformer(keys=columns["key"], problem_type="regression")
+        fselection = FeatureSelectionTransformer(keys=columns["key"], problem_type="regression", top_n=50)
     chisquare = ChiSquareTransformer(categorical_cols=columns["categoric"], numerical_cols=columns["numeric"])
     correlations = CorrelationTransformer(numerical_cols=columns["numeric"], categorical_cols=columns["categoric"],
                                           target=columns["target"], threshold=corr_per)
@@ -383,14 +383,17 @@ def features_pipeline(index, X_train, y_train ,X_test, y_test, columns, row, spa
                   ("correlations", correlations),
                   ("categorize", categorize),
                   ("dummies", dummies),
-                  ("fselection", fselection),
-                  ("timeseries", timeseries)]
+                  ("timeseries", timeseries),
+                  ("fselection", fselection)]
     if key is None:
         steps_feat = steps_feat[:-1]
-    pipeline_feat = Pipeline(steps=steps_feat)
-    pipeline_feat = pipeline_feat.fit(X_train, y_train)
-    X_train = pipeline_feat.transform(X_train)
-    X_test = pipeline_feat.transform(X_test)
+    try:
+        pipeline_feat = Pipeline(steps=steps_feat)
+        pipeline_feat = pipeline_feat.fit(X_train, y_train)
+        X_train = pipeline_feat.transform(X_train)
+        X_test = pipeline_feat.transform(X_test)
+    except Exception as e:
+        print(e)
     finish_time = time.time()
     time_in_minutes = (finish_time - start_time) / 60
     if not os.path.exists("preprocess_results/"):

@@ -114,14 +114,20 @@ def scoring(model, X_train, X_test, y_train, y_test, columns, row={}, model_name
     else:
         report = {"test_r2_score": metrics.r2_score(y_test, y_pred),
                   "test_median_absolute_error": metrics.median_absolute_error(y_test, y_pred),
-                  "test_mean_squared_error": metrics.mean_squared_error(y_test, y_pred),
+                  "test_mse": metrics.mean_squared_error(y_test, y_pred),
+                  "test_rmse": metrics.mean_squared_error(y_test, y_pred) ** 0.5,
                   "test_mean_absolute_error": metrics.mean_absolute_error(y_test, y_pred),
                   "test_explained_variance_score": metrics.explained_variance_score(y_test, y_pred),
                   "test_nrmse": np.power(metrics.mean_squared_error(y_test, y_pred), 0.5) /
                                 np.power(y_test.max() - y_test.min(), 2),
+                  "test_cv_rmse": (metrics.mean_squared_error(y_test, y_pred) ** 0.5) / row["test_y_perc"],
+                  "test_cv_mae": (metrics.mean_absolute_error(y_test, y_pred) ** 0.5) / row["test_y_perc"],
+                  "train_cv_rmse": (metrics.mean_squared_error(y_train, train_y_pred) ** 0.5) / row["train_y_perc"],
+                  "train_cv_mae": (metrics.mean_absolute_error(y_train, train_y_pred) ** 0.5) / row["train_y_perc"],
                   "train_r2_score": metrics.r2_score(y_train, train_y_pred),
                   "train_median_absolute_error": metrics.median_absolute_error(y_train, train_y_pred),
-                  "train_mean_squared_error": metrics.mean_squared_error(y_train, train_y_pred),
+                  "train_mse": metrics.mean_squared_error(y_train, train_y_pred),
+                  "train_rmse": metrics.mean_squared_error(y_train, train_y_pred) ** 0.5,
                   "train_mean_absolute_error": metrics.mean_absolute_error(y_train, train_y_pred),
                   "train_explained_variance_score": metrics.explained_variance_score(y_train, train_y_pred),
                   "train_nrmse": np.power(metrics.mean_squared_error(y_train, train_y_pred), 0.5) / np.power(

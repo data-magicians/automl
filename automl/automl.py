@@ -58,6 +58,7 @@ class AutoML:
         exclude_cols = params["exclude_cols"]
         key_cols = params["key_cols"]
         problems = [x for x in params["problems"] if self.problem in x["target"]]
+        exclude_cols = [x["exclude_cols"] for x in params["problems"] if self.problem in x["target"]]
         target_cols = [t["target"] for t in problems]
         # todo remove the pandas and uncomment the spark to pandas
         # df = self.session.sql("select * from spark_df_joined").toPandas()
@@ -247,13 +248,13 @@ class AutoML:
         return model.predict(X)
 
     @staticmethod
-    def shap_analysis(df, shap_values, id_field_name="", entitis=[]):
+    def shap_analysis(df, shap_values, features, id_field_name="", entitis=[], top_n=200, number_of_features_use=10):
         # create a small df with only x amount of customers for shap explanation
 
         # we need to look at absolute values
         shap_feature_df_abs = pd.DataFrame(shap_values).abs()
         # Apply Decorate-Sort row-wise to our df, and slice the top-n columns within each row...
-        sort_decr2_topn = lambda row, nlargest=200: sorted(pd.Series(zip(shap_feature_df_abs.columns, row)),
+        sort_decr2_topn = lambda row, nlargest=top_n: sorted(pd.Series(zip(shap_feature_df_abs.columns, row)),
                                                            key=lambda cv: -cv[1])[:nlargest]
         tmp = shap_feature_df_abs.apply(sort_decr2_topn, axis=1)
         # then your result (as a pandas DataFrame) is...
@@ -276,27 +277,27 @@ class AutoML:
             user_weight_df["feature"] = df.columns[user_weight_df["feature"].tolist()]
             # join original value
             user_original_values = df[df[id_field_name].isin([one_user_id])]
-            user_original_values = user_original_values.T.reset_index()
+            user_original_values = user_original_values[features].T.reset_index()
             user_original_values.columns = ["feature", "feature_value"]
             user_weight_df = pd.merge(user_weight_df, user_original_values, on="feature")
             # rank the feature weight
             user_weight_df["feature_rank"] = user_weight_df.index + 1
             # add user id
             user_weight_df[id_field_name] = one_user_id
-            number_of_features_use = 10
             user_weight_df = user_weight_df[user_weight_df["feature_rank"] <= number_of_features_use]
             list_of_user_dfs.append(user_weight_df)
-            final_shap_df_1 = pd.concat(list_of_user_dfs)
-            return final_shap_df_1
+        final_shap_df_1 = pd.concat(list_of_user_dfs)
+        return final_shap_df_1
 
     def explain(self, data, shap_exist=False, global_explain=True, top_n=20):
 
         model, model_name, metrics = self.get_best_model(True, True)
         model_name = model_name.split("_")[-1]
         target = self.problem
+        path = "automl/explain/{}/".format(target)
         df_metrics = pd.io.json.json_normalize(metrics["report"])
         if model_name in ["rf", "xgboost"]:
-            features = list(data.columns)
+            features = metrics["columns"]
             importances = model.best_estimator_.steps[-1][-1].feature_importances_
             indices = np.argsort(importances)[-top_n:]
             plt.figure(1)
@@ -308,13 +309,13 @@ class AutoML:
             indices = indices[::-1]
             df = pd.DataFrame([(a, b) for a, b in zip(importances[indices], [features[i] for i in indices])],
                               columns=["importance", "feature"])
-            if not os.path.exists("automl/explain"):
-                os.mkdir("automl/explain/")
-            df.to_csv("automl/explain/{}_{}.csv".format(target, model_name), index=False)
+            if not os.path.exists(path):
+                os.mkdir(path)
+            df.to_csv(path + model_name + "_importances.csv", index=False)
 
         if shap_exist:
             try:
-                shap_val = pickle.load(open("automl/explain/shap_val_{}_{}.p".format(target, model_name), "rb"))
+                shap_val = pickle.load(open(path + "shap_val_{}.p".format(model_name), "rb"))
             except Exception as e:
                 print(e)
         else:
@@ -323,15 +324,17 @@ class AutoML:
             else:
                 ex = shap.KernelExplainer(model.best_estimator_.steps[-1][1])
             try:
-                shap_val = ex.shap_values(data.values)[-1]
+                shap_val = ex.shap_values(data[features].values)
+                if len(shap_val) == 2:
+                    shap_val = shap_val[-1]
             except Exception as e:
-                shap_val = ex.shap_values(data.values)
-            pickle.dump(shap_val, open("automl/explain/shap_val_{}_{}.p".format(target, model_name), "wb"))
+                shap_val = ex.shap_values(data[features].values)
+            pickle.dump(shap_val, open(path + "shap_val_{}.p".format(model_name), "wb"))
 
-        local_shap_df = self.shap_analysis(data, shap_val, data.columns[0], data[data.columns[0]].unique().tolist())
-        local_shap_df.to_csv("automl/explain/local_shap_df.csv", index=False)
+        local_shap_df = self.shap_analysis(data, shap_val, features, data.columns[0], data[data.columns[0]].unique().tolist())
+        local_shap_df.to_csv(path + "local_shap_df.csv", index=False)
         if global_explain:
-            columns = data.columns
+            columns = features
             index = 0
             corr_index = 0
             columns_short = columns[index:]
@@ -361,7 +364,7 @@ class AutoML:
             plt.figure()
             corrs = {}
             for i in idx:
-                corr = np.corrcoef(shap_val[:, columns_short_index][:, i], data.values[:, columns_short_index][:, i])
+                corr = np.corrcoef(shap_val[:, columns_short_index][:, i], data[features].values[:, columns_short_index][:, i])
                 # corr = np.corrcoef(shap_val[:, columns_short_index][:, i].sum(axis=1),
                 #                    data[:, columns_short_index][:, i].sum(axis=1))
                 corrs[cols_s[i]] = corr[0, 1] if not np.isnan(corr[0, 1]) else 0
@@ -373,6 +376,6 @@ class AutoML:
             plt.show()
             # shap.summary_plot(shap_val[:, index:].sum(axis=1), pd.DataFrame(data.values[:, index:].sum(axis=1), columns=cols_s))
             # plt.show()
-            shap.dependence_plot(columns[idx[0]], shap_val[:, :], pd.DataFrame(data.values[:, :], columns=columns[:]))
+            shap.dependence_plot(columns[idx[0]], shap_val[:, :], pd.DataFrame(data[features].values[:, :], columns=columns[:]))
             plt.show()
             print(1)
