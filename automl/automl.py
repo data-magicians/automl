@@ -55,11 +55,11 @@ class AutoML:
         os.chdir(os.path.dirname(os.path.realpath(__file__)))
         params = json.loads(open("params.json").read())
         cols_per = params["cols_per"]
-        exclude_cols = params["exclude_cols"]
         key_cols = params["key_cols"]
         problems = [x for x in params["problems"] if self.problem in x["target"]]
         exclude_cols = [x["exclude_cols"] for x in params["problems"] if self.problem in x["target"]]
         target_cols = [t["target"] for t in problems]
+        top_n = params["feature_selection"]
         # todo remove the pandas and uncomment the spark to pandas
         # df = self.session.sql("select * from spark_df_joined").toPandas()
         # df = pd.read_csv('C:\\Users\\Administrator\\PycharmProjects\\automl\\test\\df_joined.csv').head(10000)
@@ -86,7 +86,7 @@ class AutoML:
             y_train = df_train[p["target"]]
             X_test = df_test.drop(p["target"], axis=1)
             y_test = df_test[p["target"]]
-            x = features_pipeline(i, X_train, y_train, X_test, y_test, columns, p, self.session, key=key_cols[0], date=key_cols[1])
+            x = features_pipeline(i, X_train, y_train, X_test, y_test, columns, p, self.session, key=key_cols[0], date=key_cols[1], top_n=top_n)
             X_return.append(x)
             if only_one_return:
                 return X_return
@@ -233,15 +233,6 @@ class AutoML:
         self._X_return = pipeline
         return pipeline
 
-    def get_evaluation(self):
-
-        files = os.listdir("results/")
-        files_best = [f for f in files if "best_model" in f and self.problem in f]
-        evaluations = []
-        for f in files_best:
-            evaluations.append(load(open(f, "w")))
-        return evaluations
-
     def predict(self, X):
 
         model = self.get_best_model()
@@ -289,25 +280,62 @@ class AutoML:
         final_shap_df_1 = pd.concat(list_of_user_dfs)
         return final_shap_df_1
 
+    def get_metrics_of_models(self):
+
+        path = os.path.dirname(os.path.realpath(__file__)) + "/results/"
+        files = [f for f in os.listdir(path) if self.problem in f and ".json" in f]
+        metrics = []
+        for f in files:
+            try:
+                metric = json.loads(open(path + f).read())
+                df_metrics = pd.io.json.json_normalize(metric["report"])
+                del metric["report"]
+                metrics.append(pd.DataFrame([metric]).join(df_metrics))
+            except Exception as e:
+                print(e)
+        best_model = [f for f in files if "best" in f][0].split("_")[-3]
+        metrics = pd.concat(metrics).drop_duplicates(subset=["model_pipeline_run"])
+        metrics["best"] = metrics["model_pipeline_run"].apply(lambda x: 1 if x == best_model else 0)
+        metrics = metrics.sort_values("test_score", ascending=False)
+        return metrics
+
     def explain(self, data, shap_exist=False, global_explain=True, top_n=20):
 
-        model, model_name, metrics = self.get_best_model(True, True)
+        model, model_name, best_metrics = self.get_best_model(True, True)
         model_name = model_name.split("_")[-1]
         target = self.problem
         path = "automl/explain/{}/".format(target)
-        df_metrics = pd.io.json.json_normalize(metrics["report"])
+        if not os.path.exists(path):
+            os.mkdir(path)
+        df_metrics = self.get_metrics_of_models()
+        df_metrics.to_csv(path + "metrics.csv", index=False)
+        new_cols = {}
+        features = best_metrics["columns"]
+        features_new = []
+        for col in features:
+            try:
+                t = col.split("_")[-1].split("(")[-1]
+                if "t-" in col:
+                    new_col = "{}*{}({}".format(col.split("-")[0][:-1], col.split("-")[1], t)
+                else:
+                    new_col = "{}*{}".format(col.split("-")[0][:-1], col.split("-")[1])
+            except Exception as e:
+                new_col = col
+            new_cols[col] = new_col
+            features_new.append(new_col)
+
         if model_name in ["rf", "xgboost"]:
-            features = metrics["columns"]
             importances = model.best_estimator_.steps[-1][-1].feature_importances_
             indices = np.argsort(importances)[-top_n:]
-            plt.figure(1)
+            plt.figure()
             plt.title('Feature Importances')
-            plt.yticks(range(len(indices)), [features[i] for i in indices], rotation=15, stretch=500)
+            plt.yticks(range(len(indices)), [features_new[i] for i in indices], rotation=15, stretch=500)
             plt.xlabel('Relative Importance')
             plt.barh(range(len(indices)), importances[indices], color='b')
-            plt.show()
+            plt.savefig(path + "importances.png", bbox_inches="tight")
+            # plt.show()
             indices = indices[::-1]
-            df = pd.DataFrame([(a, b) for a, b in zip(importances[indices], [features[i] for i in indices])],
+            df = pd.DataFrame([(a, b) for a, b in zip(importances[indices], [features_new[i] for i in indices])],
                               columns=["importance", "feature"])
             if not os.path.exists(path):
                 os.mkdir(path)
@@ -327,13 +355,25 @@ class AutoML:
                 shap_val = ex.shap_values(data[features].values)
                 if len(shap_val) == 2:
                     shap_val = shap_val[-1]
+                    expected_value = ex.expected_value[-1]
+                else:
+                    expected_value = ex.expected_value
             except Exception as e:
                 shap_val = ex.shap_values(data[features].values)
             pickle.dump(shap_val, open(path + "shap_val_{}.p".format(model_name), "wb"))
 
+        data = data.rename(columns=new_cols)
+        features = features_new
         local_shap_df = self.shap_analysis(data, shap_val, features, data.columns[0], data[data.columns[0]].unique().tolist())
         local_shap_df.to_csv(path + "local_shap_df.csv", index=False)
         if global_explain:
+            plt.figure()
+            shap.summary_plot(shap_val, data[features], show=False)
+            plt.savefig(path + "shap_summary_plot.png", bbox_inches="tight")
+            # plt.show()
+            # shap.force_plot(expected_value, shap_val, data[features], show=False)
+            # plt.savefig(path + "shap_force_plot.png", bbox_inches="tight")
+            # plt.show()
             columns = features
             index = 0
             corr_index = 0
@@ -361,21 +401,34 @@ class AutoML:
             best_features_mean = [mean_[i] for i in idx]
             best_features = [cols_s[i] for i in idx]
             ############################################ check ######################################
-            plt.figure()
             corrs = {}
             for i in idx:
                 corr = np.corrcoef(shap_val[:, columns_short_index][:, i], data[features].values[:, columns_short_index][:, i])
                 # corr = np.corrcoef(shap_val[:, columns_short_index][:, i].sum(axis=1),
                 #                    data[:, columns_short_index][:, i].sum(axis=1))
                 corrs[cols_s[i]] = corr[0, 1] if not np.isnan(corr[0, 1]) else 0
+            plt.figure()
             ax = pd.Series(best_features_sum, index=best_features).plot(kind='barh',
                                                                         color=['red' if corr > 0 else 'blue' for
                                                                                corr in corrs.values()],
                                                                         x='Variable', y='SHAP_abs')
             ax.set_xlabel("SHAP Value (Red = Positive Impact) model: {} target: {}".format(model_name, target))
-            plt.show()
-            # shap.summary_plot(shap_val[:, index:].sum(axis=1), pd.DataFrame(data.values[:, index:].sum(axis=1), columns=cols_s))
+            plt.savefig(path + "shap_global_explain.png", bbox_inches="tight")
             # plt.show()
-            shap.dependence_plot(columns[idx[0]], shap_val[:, :], pd.DataFrame(data[features].values[:, :], columns=columns[:]))
-            plt.show()
-            print(1)
+
+@staticmethod
+def _plot_roc(model, y, score):
+
+    plt.figure()
+    lw = 2
+    fpr, tpr, _ = metrics.roc_curve(y, score)
+    roc_auc = metrics.auc(fpr, tpr)
+    plt.plot(fpr, tpr, color='darkorange', lw=lw, label='ROC curve (area = %0.2f)' % roc_auc)
+    plt.plot([0, 1], [0, 1], color='navy', lw=lw, linestyle='--')
+    plt.xlim([0.0, 1.0])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.title('ROC curve {}'.format(model))
+    plt.legend(loc="lower right")
+    plt.show()
