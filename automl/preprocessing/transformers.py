@@ -693,10 +693,17 @@ class CategorizeByTargetTransformer(CustomTransformer):
         df[self.categorical_cols].fillna('nan', inplace=True)
 
         for col in self.categorical_cols:
-            m = df.loc[df[col] != np.inf, col].max() + df[col].std()
-            df[col].replace(np.inf, m, inplace=True)
-            m = df.loc[df[col] != np.NINF, col].min() + df[col].std()
-            df[col].replace(np.NINF, m, inplace=True)
+
+            try:
+                m = df.loc[df[col] != np.inf, col].max() + df[col].std()
+                df[col].replace(np.inf, m, inplace=True)
+                m = df.loc[df[col] != np.NINF, col].min() + df[col].std()
+                df[col].replace(np.NINF, m, inplace=True)
+            except Exception as e:
+                print("problem in categorize:")
+                print("column is: {}".format(col))
+                print(e)
+
             re = self._check_if_could_joined(df, col, y)
             all_cat = []
 
@@ -819,7 +826,10 @@ class CorrelationTransformer(CustomTransformer):
         """
         if self.fit_first:
             model_cols = self.categorical_cols + self.numerical_cols + self.target
-            df = pd.concat([X.reset_index(drop=True), y.reset_index(drop=True)], axis=1)
+            if y is not None:
+                df = pd.concat([X.reset_index(drop=True), y.reset_index(drop=True)], axis=1)
+            else:
+                df = X.reset_index(drop=True)
             final_cols = [col for col in model_cols if col in df.columns]
             corr = df[final_cols].corr("spearman")
             if self.target[0] not in corr.columns:
@@ -1158,7 +1168,6 @@ class FeatureSelectionTransformer(CustomTransformer):
         self.problem_type = problem_type
         self.features = []
 
-
     def fit(self, X, y=None, **kwargs):
 
         """
@@ -1173,14 +1182,18 @@ class FeatureSelectionTransformer(CustomTransformer):
             xgb = XGBClassifier()
         else:
             xgb = XGBRegressor()
-        xgb.fit(X, y)
-        features = list(X.columns)
-        importances = xgb.feature_importances_
-        indices = np.argsort(importances)[-self.top_n:]
-        indices = indices[::-1]
-        df = pd.DataFrame([(a, b) for a, b in zip(importances[indices], [features[i] for i in indices])],
-                          columns=["importance", "feature"])
-        self.features = df["feature"].tolist()
+        try:
+            xgb.fit(X, y)
+            features = list(X.columns)
+            importances = xgb.feature_importances_
+            indices = np.argsort(importances)[-self.top_n:]
+            indices = indices[::-1]
+            df = pd.DataFrame([(a, b) for a, b in zip(importances[indices], [features[i] for i in indices])],
+                              columns=["importance", "feature"])
+            self.features = df["feature"].tolist()
+        except Exception as e:
+            logging.info("problem in feature selection fit:")
+            logging.info(e)
         logging.info("FeatureSelectionTransformer fit end")
         return self
 
@@ -1193,4 +1206,7 @@ class FeatureSelectionTransformer(CustomTransformer):
         :return: df: the transformed data - Dataframe
         """
         logging.info("FeatureSelectionTransformer transform end")
+        cols = [col for col in self.features if col not in X.columns]
+        for col in cols:
+            X[col] = 0
         return X[self.features]

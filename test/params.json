@@ -137,7 +137,14 @@
     "raw_data_name": "df_joined"
   },
   "models_names": ["nb", "lr", "knn", "rf", "mlp", "svm", "xgb", "dl", "dl-rnn", "dl-cnn"],
-  "exclude_cols": [],
   "key_cols": ["account_id", "monthtable_rownumber"],
-  "problems": [{"target": "target_loan", "type": "classification"},  {"target": "target_amount", "type": "regression"}, {"target": "target_churn", "type": "classification"}, {"target": "gender", "type": "classification"}]
+  "problems": [{"target": "target_loan", "type": "classification", "exclude_cols": ["target_amount"]},
+    {"target": "target_amount", "type": "regression", "exclude_cols": ["target_loan"]},
+    {"target": "target_churn", "type": "classification", "exclude_cols": []},
+    {"target": "gender", "type": "classification", "exclude_cols": []}],
+  "email_notifications":{
+    "email": "data.magicians.inc@gmail.com",
+    "password": "sccvtvjknhzssbpt",
+    "recipients": ["yossi@data-magicians.com", "orry@data-magicians.com"]
+  }
 }

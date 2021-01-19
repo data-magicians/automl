@@ -1,6 +1,9 @@
 import pandas as pd
 import numpy as np
 import os
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 from tensorflow.compat.v1.keras import backend as K
 import json
 import io
@@ -167,3 +170,28 @@ def load(bytes_container: io.BytesIO):
     pack = joblib.load(bytes_container)
     o = joblib.load(io.BytesIO(pack["model"]))
     return o
+
+
+def send_email(params, mail_content="ok", subject='test mail'):
+
+    #The mail addresses and password
+    sender_address = params["email"]
+    sender_pass = params["password"]
+    receiver_addresses = params["recipients"]
+    #Setup the MIME
+    message = MIMEMultipart()
+    message['From'] = sender_address
+    for to in receiver_addresses:
+        message['To'] = to
+        message['Subject'] = subject   #The subject line
+        #The body and the attachments for the mail
+        message.attach(MIMEText(mail_content, 'plain'))
+        #Create SMTP session for sending the mail
+        session = smtplib.SMTP('smtp.gmail.com', 587) #use gmail with port
+        session.starttls() #enable security
+        session.login(sender_address, sender_pass) #login with mail_id and password
+        text = message.as_string()
+        session.sendmail(sender_address, to, text)
+        session.quit()
+        print('Mail Sent to: {}'.format(to))
+
