@@ -729,7 +729,7 @@ class CategorizeByTargetTransformer(CustomTransformer):
                 self.names[col] = {}
                 for c in networkx.connected_components(g):
                     subgraph = g.subgraph(c)
-                    category = '-'.join([str(x) for x in subgraph.nodes()])
+                    category = '*'.join([str(x) for x in subgraph.nodes()])
                     for node in subgraph.nodes():
                         self.names[col][str(node).replace(" ", "")] = category
                     drop_out += subgraph.nodes()
