@@ -1088,7 +1088,7 @@ class TimeSeriesTransformer(CustomTransformer):
     Transformer that performs time series data preparation
     """
     def __init__(self, w=5, r=1, dropnan=True, target=None, method="window", key=None, date=None, split_y=False,
-                 static_cols=[], **kwargs):
+                 static_cols=[], target_history=True, **kwargs):
         """
 
         :param w:
@@ -1112,6 +1112,7 @@ class TimeSeriesTransformer(CustomTransformer):
         self.date = date
         self.split_y = split_y
         self.static_cols = static_cols
+        self.target_history = target_history
         self.kwargs = kwargs
 
     def fit(self, X, y=None, **kwargs):
@@ -1148,6 +1149,9 @@ class TimeSeriesTransformer(CustomTransformer):
             df.set_index([self.key, self.date], inplace=True)
             try:
                 df = df.drop(self.target, axis=1)
+                if not self.target_history:
+                    cols_drop = [col for col in df.columns if self.target in col]
+                    df = df.drop(cols_drop, axis=1)
             except Exception as e:
                 pass
             logging.info("TimeSeriesTransformer transform end")
