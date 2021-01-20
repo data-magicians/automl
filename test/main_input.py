@@ -33,12 +33,12 @@ if __name__ == "__main__":
         aml_churn = AutoML(spark, mapping, schema, "target_churn")
         aml_gender = AutoML(spark, mapping, schema, "gender")
 
-        start_time = time.time()
-        aml_loan.preprocess_data()
-        send_email(params["email_notifications"], "the loan preprocess finished in: {} minutes".format((time.time() - start_time) / 60), "datomize")
-        start_time = time.time()
-        aml_loan.train()
-        send_email(params["email_notifications"], "the loan train finished in: {} minutes".format((time.time() - start_time) / 60), "datomize")
+        # start_time = time.time()
+        # aml_loan.preprocess_data()
+        # send_email(params["email_notifications"], "the loan preprocess finished in: {} minutes".format((time.time() - start_time) / 60), "datomize")
+        # start_time = time.time()
+        # aml_loan.train()
+        # send_email(params["email_notifications"], "the loan train finished in: {} minutes".format((time.time() - start_time) / 60), "datomize")
 
         start_time = time.time()
         aml_amount.preprocess_data()
@@ -54,13 +54,6 @@ if __name__ == "__main__":
         aml_churn.train()
         send_email(params["email_notifications"], "the churn train finished in: {} minutes".format((time.time() - start_time) / 60), "datomize")
 
-        start_time = time.time()
-        aml_gender.preprocess_data()
-        send_email(params["email_notifications"], "the gender preprocess finished in: {} minutes".format((time.time() - start_time) / 60), "datomize")
-        start_time = time.time()
-        aml_gender.train()
-        send_email(params["email_notifications"], "the gender train finished in: {} minutes".format((time.time() - start_time) / 60), "datomize")
-
         _, _, X, _ = aml_loan.get_data_after_preprocess()
         X = X.groupby(["account_id"]).last()
         predictions = aml_loan.predict(X)
@@ -73,10 +66,6 @@ if __name__ == "__main__":
         X = X.groupby(["account_id"]).last()
         predictions = aml_churn.predict(X)
         aml_churn.explain(X.reset_index())
-        _, _, X, _ = aml_gender.get_data_after_preprocess()
-        X = X.groupby(["account_id"]).last()
-        predictions = aml_gender.predict(X)
-        aml_gender.explain(X.reset_index())
 
         send_email(params["email_notifications"], "the total finished in: {} minutes".format((time.time() - start_time_total) / 60), "datomize")
         print("the total finished in: {} minutes".format((time.time() - start_time_total) / 60))
