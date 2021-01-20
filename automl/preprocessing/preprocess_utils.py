@@ -385,8 +385,7 @@ def features_pipeline(index, X_train, y_train ,X_test, y_test, columns, row, spa
                   ("dummies", dummies),
                   ("timeseries", timeseries),
                   ("fselection", fselection)]
-    if key is None:
-        steps_feat = steps_feat[:-1]
+
     try:
         pipeline_feat = Pipeline(steps=steps_feat)
         pipeline_feat = pipeline_feat.fit(X_train, y_train)
