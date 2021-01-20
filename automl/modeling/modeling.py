@@ -109,6 +109,8 @@ def scoring(model, X_train, X_test, y_train, y_test, columns, row={}, model_name
             report["test_threshold_roc"] = thresholds
             report["test_tpr"] = tpr
             report["test_fpr"] = fpr
+            report["cm_train"] = metrics.confusion_matrix(y_train, train_y_pred).tolist()
+            report["cm_test"] = metrics.confusion_matrix(y_test, y_pred).tolist()
         except Exception as e:
             print(e)
     else:

@@ -62,7 +62,7 @@ class AutoML:
         top_n = params["feature_selection"]
         # todo remove the pandas and uncomment the spark to pandas
         # df = self.session.sql("select * from spark_df_joined").toPandas()
-        # df = pd.read_csv('C:\\Users\\Administrator\\PycharmProjects\\automl\\test\\df_joined.csv').head(10000)
+        # df = pd.read_csv('C:\\Users\\Administrator\\PycharmProjects\\automl\\test\\df_joined.csv').head(1000)
         df = pd.read_csv('C:\\Users\\Administrator\\PycharmProjects\\automl\\test\\df_joined.csv')
         columns = get_cols(df, key_cols + target_cols + exclude_cols, cols_per)
         logging.info("finish get cols")
@@ -309,6 +309,7 @@ class AutoML:
             os.mkdir(path)
         df_metrics = self.get_metrics_of_models()
         df_metrics.to_csv(path + "metrics.csv", index=False)
+        df_metrics.drop("columns", axis=1).to_csv(path + "metrics_no_cols.csv", index=False)
         new_cols = {}
         features = best_metrics["columns"]
         features_new = []

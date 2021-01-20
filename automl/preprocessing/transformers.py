@@ -1146,6 +1146,10 @@ class TimeSeriesTransformer(CustomTransformer):
             pool.join()
             df = pd.concat(dfs)
             df.set_index([self.key, self.date], inplace=True)
+            try:
+                df = df.drop(self.target, axis=1)
+            except Exception as e:
+                pass
             logging.info("TimeSeriesTransformer transform end")
             return df
 
@@ -1186,7 +1190,7 @@ class FeatureSelectionTransformer(CustomTransformer):
             xgb.fit(X, y)
             features = list(X.columns)
             importances = xgb.feature_importances_
-            indices = np.argsort(importances)[-self.top_n:]
+            indices = np.argsort(importances)[-min([self.top_n, len(features)]):]
             indices = indices[::-1]
             df = pd.DataFrame([(a, b) for a, b in zip(importances[indices], [features[i] for i in indices])],
                               columns=["importance", "feature"])
@@ -1194,6 +1198,7 @@ class FeatureSelectionTransformer(CustomTransformer):
         except Exception as e:
             logging.info("problem in feature selection fit:")
             logging.info(e)
+            self.features = X.columns
         logging.info("FeatureSelectionTransformer fit end")
         return self
 

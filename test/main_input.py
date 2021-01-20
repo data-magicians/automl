@@ -48,18 +48,18 @@ if __name__ == "__main__":
         send_email(params["email_notifications"], "the amount train finished in: {} minutes".format((time.time() - start_time) / 60), "datomize")
 
         start_time = time.time()
-        aml_gender.preprocess_data()
-        send_email(params["email_notifications"], "the gender preprocess finished in: {} minutes".format((time.time() - start_time) / 60), "datomize")
-        start_time = time.time()
-        aml_gender.train()
-        send_email(params["email_notifications"], "the gender train finished in: {} minutes".format((time.time() - start_time) / 60), "datomize")
-
-        start_time = time.time()
         aml_churn.preprocess_data()
         send_email(params["email_notifications"], "the churn preprocess finished in: {} minutes".format((time.time() - start_time) / 60), "datomize")
         start_time = time.time()
         aml_churn.train()
         send_email(params["email_notifications"], "the churn train finished in: {} minutes".format((time.time() - start_time) / 60), "datomize")
+
+        start_time = time.time()
+        aml_gender.preprocess_data()
+        send_email(params["email_notifications"], "the gender preprocess finished in: {} minutes".format((time.time() - start_time) / 60), "datomize")
+        start_time = time.time()
+        aml_gender.train()
+        send_email(params["email_notifications"], "the gender train finished in: {} minutes".format((time.time() - start_time) / 60), "datomize")
 
         _, _, X, _ = aml_loan.get_data_after_preprocess()
         X = X.groupby(["account_id"]).last()

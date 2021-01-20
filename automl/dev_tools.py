@@ -66,9 +66,13 @@ def series_to_supervised(data, w=5, r=1, dropnan=True, target=None, cols_remove=
         agg.fillna(-1, inplace=True)
     if target is not None:
         cols_static = ["{}(t)".format(col) for col in static_cols]
-        cols_remove = [col for col in agg.columns if ("{}(t)".format(col.split("(")[0]) in col or "{}(t+".format(
-            col.split("(")[0]) in col) and target not in col and col not in cols_static]
+        cols_remove = [col for col in agg.columns if (("{}(t)".format(col.split("(")[0]) in col or "{}(t+".format(
+            col.split("(")[0]) in col) and target not in col and col not in cols_static)]
         agg.drop(cols_remove, axis=1, inplace=True)
+        try:
+            agg = agg.drop(target, axis=1)
+        except Exception as e:
+            pass
     return agg
 
 
