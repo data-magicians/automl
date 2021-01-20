@@ -1148,10 +1148,11 @@ class TimeSeriesTransformer(CustomTransformer):
             df = pd.concat(dfs)
             df.set_index([self.key, self.date], inplace=True)
             try:
-                df = df.drop(self.target, axis=1)
                 if not self.target_history:
                     cols_drop = [col for col in df.columns if self.target in col]
                     df = df.drop(cols_drop, axis=1)
+                if self.target in df.columns:
+                    df = df.drop(self.target, axis=1)
             except Exception as e:
                 pass
             logging.info("TimeSeriesTransformer transform end")
@@ -1202,7 +1203,7 @@ class FeatureSelectionTransformer(CustomTransformer):
         except Exception as e:
             logging.info("problem in feature selection fit:")
             logging.info(e)
-            self.features = X.columns
+            self.features = list(X.columns)
         logging.info("FeatureSelectionTransformer fit end")
         return self
 

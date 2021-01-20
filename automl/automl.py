@@ -57,14 +57,18 @@ class AutoML:
         cols_per = params["cols_per"]
         key_cols = params["key_cols"]
         problems = [x for x in params["problems"] if self.problem in x["target"]]
-        exclude_cols = [x["exclude_cols"] for x in params["problems"] if self.problem in x["target"]]
+        exclude_cols = [x["exclude_cols"] for x in params["problems"] if self.problem in x["target"]][0]
         target_cols = [t["target"] for t in problems]
         top_n = params["feature_selection"]
         # todo remove the pandas and uncomment the spark to pandas
         # df = self.session.sql("select * from spark_df_joined").toPandas()
         # df = pd.read_csv('C:\\Users\\Administrator\\PycharmProjects\\automl\\test\\df_joined.csv').head(1000)
         df = pd.read_csv('C:\\Users\\Administrator\\PycharmProjects\\automl\\test\\df_joined.csv')
-        columns = get_cols(df, key_cols + target_cols + exclude_cols, cols_per)
+        try:
+            df = df.drop(exclude_cols, axis=1)
+        except Exception as e:
+            print("can't remove the excluded features")
+        columns = get_cols(df, key_cols + target_cols, cols_per)
         logging.info("finish get cols")
         columns["key"] = key_cols
         json.dump(columns, open("columns_type_mapping.json", "w"))
