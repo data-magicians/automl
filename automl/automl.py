@@ -321,13 +321,13 @@ class AutoML:
         new_cols = {}
         features = best_metrics["columns"]
         features_new = []
+
         for col in features:
             try:
-                t = col.split("_")[-1].split("(")[-1]
-                if "t-" in col:
-                    new_col = "{}*{}({}".format(col.split("-")[0][:-1], col.split("-")[1], t)
-                else:
-                    new_col = "{}*{}".format(col.split("-")[0][:-1], col.split("-")[1])
+                new_col = col.split("*")[0]
+                if "t-" in col and col != new_col:
+                    t = "(t-" + col.split("(t-")[-1]
+                    new_col = new_col + t
             except Exception as e:
                 new_col = col
             new_cols[col] = new_col
@@ -440,4 +440,4 @@ def _plot_roc(model, y, score):
     plt.ylabel('True Positive Rate')
     plt.title('ROC curve {}'.format(model))
     plt.legend(loc="lower right")
-    plt.show()
+    plt.savefig("auc.png", bbox_inches="tight")
