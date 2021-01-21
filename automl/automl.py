@@ -310,7 +310,11 @@ class AutoML:
         target = self.problem
         path = "automl/explain/{}/".format(target)
         if not os.path.exists(path):
-            os.mkdir(path)
+            try:
+                os.mkdir(path)
+            except Exception as e:
+                os.mkdir("/".join(path.split("/")[:2]))
+                os.mkdir(path)
         df_metrics = self.get_metrics_of_models()
         df_metrics.to_csv(path + "metrics.csv", index=False)
         df_metrics.drop("columns", axis=1).to_csv(path + "metrics_no_cols.csv", index=False)
