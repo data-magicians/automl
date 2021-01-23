@@ -340,7 +340,6 @@ class AutoML:
             plt.xlabel('Relative Importance')
             plt.barh(range(len(indices)), importances[indices], color='b')
             plt.savefig(path + "importances.png", bbox_inches="tight")
-            # plt.show()
             indices = indices[::-1]
             df = pd.DataFrame([(a, b) for a, b in zip(importances[indices], [features_new[i] for i in indices])],
                               columns=["importance", "feature"])
@@ -377,42 +376,22 @@ class AutoML:
             plt.figure()
             shap.summary_plot(shap_val, data[features], show=False)
             plt.savefig(path + "shap_summary_plot.png", bbox_inches="tight")
-            # plt.show()
-            # shap.force_plot(expected_value, shap_val, data[features], show=False)
-            # plt.savefig(path + "shap_force_plot.png", bbox_inches="tight")
-            # plt.show()
             columns = features
             index = 0
-            corr_index = 0
             columns_short = columns[index:]
-            # columns_short = [col for col in columns_short if "SUM_OF_INTERNET_YEAR_ADVANCED_INCOME" not in col.upper() and "SUM_OF_PPA_INCOME" not in col.upper()]
             columns_short_index = []
             for i, v in enumerate(columns):
                 if v in columns_short:
                     columns_short_index.append(i)
-            # abs_sum = np.abs(shap_val[:, columns_short_index]).sum(axis=(0, 1))
-            # regular_sum = shap_val[:, columns_short_index].sum(axis=(0, 1))
-            # mean_ = shap_val[:, columns_short_index].mean(axis=(0, 1))
             abs_sum = np.abs(shap_val[:, columns_short_index]).sum(axis=(0))
-            regular_sum = shap_val[:, columns_short_index].sum(axis=(1))
-            mean_ = shap_val[:, columns_short_index].mean(axis=(1))
-            arg_min = abs_sum.argmin()
-            arg_max = abs_sum.argmax()
-            best_min = columns_short[arg_min]
-            best_max = columns_short[arg_max]
             idx = (-abs_sum).argsort()[:top_n]
-            # cols_s = [col.split("_VERTICAL_ID")[0] for col in columns_short]
             cols_s = columns_short
             best_features_sum = [abs_sum[i] for i in idx]
-            best_features_regular_sum = [regular_sum[i] for i in idx]
-            best_features_mean = [mean_[i] for i in idx]
             best_features = [cols_s[i] for i in idx]
             ############################################ check ######################################
             corrs = {}
             for i in idx:
                 corr = np.corrcoef(shap_val[:, columns_short_index][:, i], data[features].values[:, columns_short_index][:, i])
-                # corr = np.corrcoef(shap_val[:, columns_short_index][:, i].sum(axis=1),
-                #                    data[:, columns_short_index][:, i].sum(axis=1))
                 corrs[cols_s[i]] = corr[0, 1] if not np.isnan(corr[0, 1]) else 0
             plt.figure()
             ax = pd.Series(best_features_sum, index=best_features).plot(kind='barh',
@@ -421,8 +400,7 @@ class AutoML:
                                                                         x='Variable', y='SHAP_abs')
             ax.set_xlabel("SHAP Value (Red = Positive Impact) model: {} target: {}".format(model_name, target))
             plt.savefig(path + "shap_global_explain.png", bbox_inches="tight")
-            # plt.show()
-
+            
     @staticmethod
     def _plot_roc(model, y, score):
 
