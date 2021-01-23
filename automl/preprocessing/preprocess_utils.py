@@ -341,7 +341,7 @@ def over_sample(X_train, y_train):
 
 
 def features_pipeline(index, X_train, y_train ,X_test, y_test, columns, row, spark, key=None, date=None, static_cols=[],
-                      r=1, w=2, corr_per=0.5, oversample=True, top_n=30):
+                      r=1, w=2, corr_per=0.5, oversample=True, top_n=50):
     """
     running a problemread_data
     :param index: the index of the sampled from the original dataset - int
@@ -383,14 +383,16 @@ def features_pipeline(index, X_train, y_train ,X_test, y_test, columns, row, spa
                   ("correlations", correlations),
                   ("categorize", categorize),
                   ("dummies", dummies),
+                  ("timeseries", timeseries),
                   ("fselection", fselection)]
-                  # ("timeseries", timeseries)]
-    if key is None:
-        steps_feat = steps_feat[:-1]
-    pipeline_feat = Pipeline(steps=steps_feat)
-    pipeline_feat = pipeline_feat.fit(X_train, y_train)
-    X_train = pipeline_feat.transform(X_train)
-    X_test = pipeline_feat.transform(X_test)
+
+    try:
+        pipeline_feat = Pipeline(steps=steps_feat)
+        pipeline_feat = pipeline_feat.fit(X_train, y_train)
+        X_train = pipeline_feat.transform(X_train)
+        X_test = pipeline_feat.transform(X_test)
+    except Exception as e:
+        print(e)
     finish_time = time.time()
     time_in_minutes = (finish_time - start_time) / 60
     if not os.path.exists("preprocess_results/"):

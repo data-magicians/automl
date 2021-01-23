@@ -4,7 +4,7 @@ from sklearn.impute import SimpleImputer
 import sys
 sys.path.append("/home/ec2-user/TCM")
 import pandas as pd
-# import hdbscan
+import hdbscan
 import numpy as np
 import networkx
 import os
@@ -14,6 +14,7 @@ from sklearn.feature_selection import chi2
 pd.options.mode.chained_assignment = None
 os.system("taskset -p 0xff %d" % os.getpid())
 import logging
+# from sklearn.preprocessing import Imputer
 
 
 logging.basicConfig(format='%(asctime)s     %(levelname)-8s %(message)s',
@@ -1235,6 +1236,8 @@ class FeatureSelectionTransformer(CustomTransformer):
         else:
             xgb = XGBRegressor()
         try:
+            cols = list(X.columns)
+            X.columns = range(len(cols))
             xgb.fit(X, y)
             features = list(X.columns)
             importances = xgb.feature_importances_
@@ -1242,7 +1245,8 @@ class FeatureSelectionTransformer(CustomTransformer):
             indices = indices[::-1]
             df = pd.DataFrame([(a, b) for a, b in zip(importances[indices], [features[i] for i in indices])],
                               columns=["importance", "feature"])
-            self.features = df["feature"].tolist()
+            self.features = [cols[i] for i in df["feature"].tolist()]
+            X.columns = cols
         except Exception as e:
             logging.info("problem in feature selection fit:")
             logging.info(e)

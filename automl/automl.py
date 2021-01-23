@@ -1,13 +1,10 @@
 # -*- encoding: utf-8 -*-
-import matplotlib.pyplot as plt
 from automl.preprocessing.preprocess_utils import *
 from automl.modeling.modeling import *
 import logging
 import sys
 import random
 from automl.dev_tools import *
-import shap
-import pickle
 
 
 class AutoML:
@@ -58,15 +55,20 @@ class AutoML:
         os.chdir(os.path.dirname(os.path.realpath(__file__)))
         params = json.loads(open("params.json").read())
         cols_per = params["cols_per"]
-        exclude_cols = params["exclude_cols"]
         key_cols = params["key_cols"]
         problems = [x for x in params["problems"] if self.problem in x["target"]]
+        exclude_cols = [x["exclude_cols"] for x in params["problems"] if self.problem in x["target"]][0]
         target_cols = [t["target"] for t in problems]
-        path = params["path"]
-        df = pd.read_csv(path)
-        columns = get_cols(df, key_cols + target_cols + exclude_cols, cols_per)
-        columns["numeric"].remove("node")
-        columns["categoric"].append("node")
+        top_n = params["feature_selection"]
+        # todo remove the pandas and uncomment the spark to pandas
+        # df = self.session.sql("select * from spark_df_joined").toPandas()
+        # df = pd.read_csv('C:\\Users\\Administrator\\PycharmProjects\\automl\\test\\df_joined.csv').head(1000)
+        df = pd.read_csv('C:\\Users\\Administrator\\PycharmProjects\\automl\\test\\df_joined.csv')
+        try:
+            df = df.drop(exclude_cols, axis=1)
+        except Exception as e:
+            print("can't remove the excluded features")
+        columns = get_cols(df, key_cols + target_cols, cols_per)
         logging.info("finish get cols")
         columns["key"] = key_cols
         json.dump(columns, open("columns_type_mapping.json", "w"))
@@ -88,7 +90,7 @@ class AutoML:
             y_train = df_train[p["target"]]
             X_test = df_test.drop(p["target"], axis=1)
             y_test = df_test[p["target"]]
-            x = features_pipeline(i, X_train, y_train, X_test, y_test, columns, p, self.session, key=key_cols[0], date=key_cols[1], top_n=30)
+            x = features_pipeline(i, X_train, y_train, X_test, y_test, columns, p, self.session, key=key_cols[0], date=key_cols[1], top_n=top_n)
             X_return.append(x)
             if only_one_return:
                 return X_return
@@ -97,6 +99,7 @@ class AutoML:
 
     def get_data_after_preprocess(self, spark=False):
         """
+
         """
         path = os.path.dirname(__file__)
         params = json.loads(open(path + "/params.json").read())
@@ -110,8 +113,7 @@ class AutoML:
             y_test = self.session.sql("select * from preprocess_results.y_test_{}.csv".format(row["target"]))
         else:
             X_train = pd.read_csv(path + "/preprocess_results/X_train_{}.csv".format(row["target"]))
-            y_train = pd.read_csv(
-                path + "/preprocess_results/y_train_{}.csv".format(row["target"])).values.flatten()
+            y_train = pd.read_csv(path + "/preprocess_results/y_train_{}.csv".format(row["target"])).values.flatten()
             X_test = pd.read_csv(path + "/preprocess_results/X_test_{}.csv".format(row["target"]))
             y_test = pd.read_csv(path + "/preprocess_results/y_test_{}.csv".format(row["target"])).values.flatten()
 
@@ -122,6 +124,7 @@ class AutoML:
 
     def train(self):
         """
+
         """
         os.chdir(os.path.dirname(os.path.realpath(__file__)))
         params = json.loads(open("params.json").read())
@@ -150,8 +153,7 @@ class AutoML:
             X_train, y_train, X_test, y_test = self.get_data_after_preprocess()
             x = (x[0], x[1], X_train, y_train, X_test, y_test, x[2], x[3])
             for index, model in enumerate(models):
-                models_2_run = [(x[1], model, params["hyperparameters"][p["type"]][models_names[index]], x[2], x[3],
-                                 x[4], x[5], models_names[index], x[6], p["type"])]
+                models_2_run = [(x[1], model, params["hyperparameters"][p["type"]][models_names[index]], x[2], x[3], x[4], x[5], models_names[index], x[6], p["type"])]
                 results = [model_pipeline_run_unpack(x) for x in models_2_run]
                 folder = p["target"]
                 path = os.path.dirname(os.path.realpath(__file__))
@@ -206,11 +208,9 @@ class AutoML:
         path = os.path.dirname(os.path.realpath(__file__)) + "/results/"
         files = os.listdir(path)
         if explain:
-            files_best = [f.replace("_best_model.json", "") for f in files if
-                          "_rf" in f and self.problem in f and "json" not in f]
+            files_best = [f.replace("_best_model.json", "") for f in files if "_rf" in f and self.problem in f and "json" not in f]
         else:
-            files_best = [f.replace("_best_model.json", "") for f in files if
-                          "best_model" in f and self.problem in f]
+            files_best = [f.replace("_best_model.json", "") for f in files if "best_model" in f and self.problem in f]
         model = None
         metrics = None
         for f in files_best:
@@ -424,3 +424,20 @@ class AutoML:
             ax.set_xlabel("SHAP Value (Red = Positive Impact) model: {} target: {}".format(model_name, target))
             plt.savefig(path + "shap_global_explain.png", bbox_inches="tight")
             # plt.show()
+
+@staticmethod
+def _plot_roc(model, y, score):
+
+    plt.figure()
+    lw = 2
+    fpr, tpr, _ = metrics.roc_curve(y, score)
+    roc_auc = metrics.auc(fpr, tpr)
+    plt.plot(fpr, tpr, color='darkorange', lw=lw, label='ROC curve (area = %0.2f)' % roc_auc)
+    plt.plot([0, 1], [0, 1], color='navy', lw=lw, linestyle='--')
+    plt.xlim([0.0, 1.0])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.title('ROC curve {}'.format(model))
+    plt.legend(loc="lower right")
+    plt.savefig("auc.png", bbox_inches="tight")

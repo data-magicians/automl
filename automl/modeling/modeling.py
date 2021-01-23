@@ -5,6 +5,7 @@ from automl.preprocessing.transformers import *
 from automl.preprocessing.pipelines import *
 from sklearn.model_selection import RandomizedSearchCV, KFold
 import time
+import pickle
 import gc
 from tensorflow.keras import models
 from tensorflow.keras import layers
@@ -13,6 +14,8 @@ from tensorflow.keras import regularizers
 from sklearn import metrics
 import re
 from sklearn.preprocessing import LabelEncoder
+import shap
+import matplotlib.pyplot as plt
 from sklearn.neural_network import MLPClassifier, MLPRegressor
 from sklearn.linear_model import LogisticRegression, ElasticNet
 from sklearn.neighbors import KNeighborsClassifier, KNeighborsRegressor
@@ -120,9 +123,9 @@ def scoring(model, X_train, X_test, y_train, y_test, columns, row={}, model_name
                   "test_explained_variance_score": metrics.explained_variance_score(y_test, y_pred),
                   "test_nrmse": np.power(metrics.mean_squared_error(y_test, y_pred), 0.5) / np.power(y_test.max() - y_test.min(), 2),
                   "test_cv_rmse": (metrics.mean_squared_error(y_test, y_pred) ** 0.5) / row["test_y_perc"],
-                  "test_cv_mae": (metrics.mean_absolute_error(y_test, y_pred)) / row["test_y_perc"],
+                  "test_cv_mae": metrics.mean_absolute_error(y_test, y_pred) / row["test_y_perc"],
                   "train_cv_rmse": (metrics.mean_squared_error(y_train, train_y_pred) ** 0.5) / row["train_y_perc"],
-                  "train_cv_mae": (metrics.mean_absolute_error(y_train, train_y_pred)) / row["train_y_perc"],
+                  "train_cv_mae": metrics.mean_absolute_error(y_train, train_y_pred) / row["train_y_perc"],
                   "train_r2_score": metrics.r2_score(y_train, train_y_pred),
                   "train_r2_score_adj": 1 - ((1 - metrics.r2_score(y_train, train_y_pred)) * (row["train_n"] - 1) / (row["train_n"] - row["train_m"] - 1)),
                   "train_median_absolute_error": metrics.median_absolute_error(y_train, train_y_pred),
