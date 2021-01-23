@@ -60,10 +60,8 @@ class AutoML:
         exclude_cols = [x["exclude_cols"] for x in params["problems"] if self.problem in x["target"]][0]
         target_cols = [t["target"] for t in problems]
         top_n = params["feature_selection"]
-        # todo remove the pandas and uncomment the spark to pandas
-        # df = self.session.sql("select * from spark_df_joined").toPandas()
-        # df = pd.read_csv('C:\\Users\\Administrator\\PycharmProjects\\automl\\test\\df_joined.csv').head(1000)
-        df = pd.read_csv('C:\\Users\\Administrator\\PycharmProjects\\automl\\test\\df_joined.csv')
+        path = params["path"]
+        df = pd.read_csv(path)
         try:
             df = df.drop(exclude_cols, axis=1)
         except Exception as e:
@@ -425,19 +423,19 @@ class AutoML:
             plt.savefig(path + "shap_global_explain.png", bbox_inches="tight")
             # plt.show()
 
-@staticmethod
-def _plot_roc(model, y, score):
+    @staticmethod
+    def _plot_roc(model, y, score):
 
-    plt.figure()
-    lw = 2
-    fpr, tpr, _ = metrics.roc_curve(y, score)
-    roc_auc = metrics.auc(fpr, tpr)
-    plt.plot(fpr, tpr, color='darkorange', lw=lw, label='ROC curve (area = %0.2f)' % roc_auc)
-    plt.plot([0, 1], [0, 1], color='navy', lw=lw, linestyle='--')
-    plt.xlim([0.0, 1.0])
-    plt.ylim([0.0, 1.05])
-    plt.xlabel('False Positive Rate')
-    plt.ylabel('True Positive Rate')
-    plt.title('ROC curve {}'.format(model))
-    plt.legend(loc="lower right")
-    plt.savefig("auc.png", bbox_inches="tight")
+        plt.figure()
+        lw = 2
+        fpr, tpr, _ = metrics.roc_curve(y, score)
+        roc_auc = metrics.auc(fpr, tpr)
+        plt.plot(fpr, tpr, color='darkorange', lw=lw, label='ROC curve (area = %0.2f)' % roc_auc)
+        plt.plot([0, 1], [0, 1], color='navy', lw=lw, linestyle='--')
+        plt.xlim([0.0, 1.0])
+        plt.ylim([0.0, 1.05])
+        plt.xlabel('False Positive Rate')
+        plt.ylabel('True Positive Rate')
+        plt.title('ROC curve {}'.format(model))
+        plt.legend(loc="lower right")
+        plt.savefig("auc.png", bbox_inches="tight")
