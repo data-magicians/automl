@@ -44,24 +44,6 @@ def init_time_series(df):
     df_temp = df
 
 
-def try_this(x):
-
-    doing(*x)
-
-
-def doing(key, key_field, date_field, fill_end):
-
-    dir_path = os.path.dirname(os.path.realpath(__file__))
-    X_t = df_temp[df_temp[key_field] == key].sort_values(by=date_field)
-    X_t = X_t.fillna(method="ffill").fillna(method="bfill").fillna(fill_end)
-    lock.acquire()
-    if not os.path.exists(dir_path + "/data.csv"):
-        X_t.to_csv(dir_path + "/data.csv")
-    else:
-        X_t.to_csv(dir_path + "/data.csv", mode="a", header=False)
-    lock.release()
-
-
 class CustomTransformer(BaseEstimator, TransformerMixin):
     """
     a general class for creating a machine learning step in the machine learning pipeline
@@ -192,6 +174,23 @@ class ImputeTransformer(CustomTransformer):
         self.fill_end = fill_end
         self.parallel = parallel
 
+    def _try_this(self, x):
+
+        self._doing(*x)
+
+    @staticmethod
+    def _doing(key, key_field, date_field, fill_end):
+
+        dir_path = os.path.dirname(os.path.realpath(__file__))
+        X_t = df_temp[df_temp[key_field] == key].sort_values(by=date_field)
+        X_t = X_t.fillna(method="ffill").fillna(method="bfill").fillna(fill_end)
+        lock.acquire()
+        if not os.path.exists(dir_path + "/data.csv"):
+            X_t.to_csv(dir_path + "/data.csv")
+        else:
+            X_t.to_csv(dir_path + "/data.csv", mode="a", header=False)
+        lock.release()
+
     def fit(self, X, y=None, **kwargs):
         """
         learns what are the column that have missing values, to make sure that in the transform the data that will
@@ -238,7 +237,7 @@ class ImputeTransformer(CustomTransformer):
                     os.remove(dir_path + "/data.csv")
                 lock = mp.Lock()
                 pool = mp.Pool(mp.cpu_count(), initializer=init, initargs=(lock, X.copy(True)))
-                pool.map_async(try_this, [(key, self.key_field, self.date_field, self.fill_end) for key in keys])
+                pool.map_async(self._try_this, [(key, self.key_field, self.date_field, self.fill_end) for key in keys])
                 pool.close()
                 pool.join()
             else:
