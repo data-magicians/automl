@@ -4,7 +4,7 @@ from sklearn.impute import SimpleImputer
 import sys
 sys.path.append("/home/ec2-user/TCM")
 import pandas as pd
-import hdbscan
+# import hdbscan
 import numpy as np
 import networkx
 import os
@@ -1059,7 +1059,7 @@ class TimeSeriesTransformer(CustomTransformer):
     Transformer that performs time series data preparation
     """
     def __init__(self, w=5, r=1, dropnan=True, target=None, method="window", key=None, date=None, split_y=False,
-                 static_cols=[], target_history=True, **kwargs):
+                 static_cols=[], target_history=True, fill_v=True, **kwargs):
         """
 
         :param w:
@@ -1084,10 +1084,10 @@ class TimeSeriesTransformer(CustomTransformer):
         self.split_y = split_y
         self.static_cols = static_cols
         self.target_history = target_history
+        self.fill_v = fill_v
         self.kwargs = kwargs
 
-    @staticmethod
-    def _series_to_supervised(data, w=5, r=1, dropnan=True, target=None, cols_remove=[], static_cols=[]):
+    def _series_to_supervised(self, data, w=5, r=1, dropnan=True, target=None, cols_remove=[], static_cols=[]):
         """
         convert series to supervised learning
         :param data:
@@ -1119,7 +1119,7 @@ class TimeSeriesTransformer(CustomTransformer):
         # drop rows with NaN values
         if dropnan:
             agg.dropna(inplace=True)
-        else:
+        elif self.fill_v:
             agg.fillna(-1, inplace=True)
         if target is not None:
             cols_static = ["{}(t)".format(col) for col in static_cols]
