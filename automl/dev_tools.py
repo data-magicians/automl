@@ -1,6 +1,7 @@
 import pandas as pd
-import numpy as np
-import os
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 from tensorflow.compat.v1.keras import backend as K
 import json
 import io
@@ -25,48 +26,6 @@ def f1_m(y_true, y_pred):
    precision = precision_m(y_true, y_pred)
    recall = recall_m(y_true, y_pred)
    return 2 * ((precision * recall) / (precision + recall + K.epsilon()))
-
-
-def series_to_supervised(data, w=5, r=1, dropnan=True, target=None, cols_remove=[], static_cols=[]):
-    """
-    convert series to supervised learning
-    :param data:
-    :param w:
-    :param r:
-    :param dropnan:
-    :param target:
-    :param cols_remove:
-    :param static_cols:
-    :return:
-    """
-    df = data
-    columns = [col for col in df.columns if col not in cols_remove]
-    cols, names = list(), list()
-    # input sequence (t-n, ... t-1)
-    for i in range(w, 0, -1):
-        cols.append(df.shift(i))
-        names += [('{}(t-{})'.format(j, i)) for j in columns]
-    # forecast sequence (t, t+1, ... t+n)
-    for i in range(0, r):
-        cols.append(df.shift(-i))
-        if i == 0:
-            names += list(columns)
-        else:
-            names += [('{}(t+{})'.format(j, i)) for j in columns]
-    # put it all together
-    agg = pd.concat(cols, axis=1)
-    agg.columns = names
-    # drop rows with NaN values
-    if dropnan:
-        agg.dropna(inplace=True)
-    else:
-        agg.fillna(-1, inplace=True)
-    if target is not None:
-        cols_static = ["{}(t)".format(col) for col in static_cols]
-        cols_remove = [col for col in agg.columns if ("{}(t)".format(col.split("(")[0]) in col or "{}(t+".format(
-            col.split("(")[0]) in col) and target not in col and col not in cols_static]
-        agg.drop(cols_remove, axis=1, inplace=True)
-    return agg
 
 
 def is_date(df, col, string_ratio=0.02):
@@ -167,3 +126,27 @@ def load(bytes_container: io.BytesIO):
     pack = joblib.load(bytes_container)
     o = joblib.load(io.BytesIO(pack["model"]))
     return o
+
+
+def send_email(params, mail_content="ok", subject='test mail'):
+
+    #The mail addresses and password
+    sender_address = params["email"]
+    sender_pass = params["password"]
+    receiver_addresses = params["recipients"]
+    #Setup the MIME
+    message = MIMEMultipart()
+    message['From'] = sender_address
+    for to in receiver_addresses:
+        message['To'] = to
+        message['Subject'] = subject   #The subject line
+        #The body and the attachments for the mail
+        message.attach(MIMEText(mail_content, 'plain'))
+        #Create SMTP session for sending the mail
+        session = smtplib.SMTP('smtp.gmail.com', 587) #use gmail with port
+        session.starttls() #enable security
+        session.login(sender_address, sender_pass) #login with mail_id and password
+        text = message.as_string()
+        session.sendmail(sender_address, to, text)
+        session.quit()
+        print('Mail Sent to: {}'.format(to))

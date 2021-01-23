@@ -3,7 +3,6 @@ from sklearn.preprocessing import LabelEncoder, MinMaxScaler
 from sklearn.impute import SimpleImputer
 import sys
 sys.path.append("/home/ec2-user/TCM")
-from automl.dev_tools import series_to_supervised
 import pandas as pd
 # import hdbscan
 import numpy as np
@@ -15,13 +14,13 @@ from sklearn.feature_selection import chi2
 pd.options.mode.chained_assignment = None
 os.system("taskset -p 0xff %d" % os.getpid())
 import logging
-# from sklearn.preprocessing import Imputer
 
 
 logging.basicConfig(format='%(asctime)s     %(levelname)-8s %(message)s',
                     datefmt='%Y-%m-%d %H:%M:%S',
                     stream=sys.stdout,
                     level='INFO')
+
 
 def init(l, df):
     """
@@ -693,10 +692,17 @@ class CategorizeByTargetTransformer(CustomTransformer):
         df[self.categorical_cols].fillna('nan', inplace=True)
 
         for col in self.categorical_cols:
-            m = df.loc[df[col] != np.inf, col].max() + df[col].std()
-            df[col].replace(np.inf, m, inplace=True)
-            m = df.loc[df[col] != np.NINF, col].min() + df[col].std()
-            df[col].replace(np.NINF, m, inplace=True)
+
+            try:
+                m = df.loc[df[col] != np.inf, col].max() + df[col].std()
+                df[col].replace(np.inf, m, inplace=True)
+                m = df.loc[df[col] != np.NINF, col].min() + df[col].std()
+                df[col].replace(np.NINF, m, inplace=True)
+            except Exception as e:
+                print("problem in categorize:")
+                print("column is: {}".format(col))
+                print(e)
+
             re = self._check_if_could_joined(df, col, y)
             all_cat = []
 
@@ -722,7 +728,7 @@ class CategorizeByTargetTransformer(CustomTransformer):
                 self.names[col] = {}
                 for c in networkx.connected_components(g):
                     subgraph = g.subgraph(c)
-                    category = '-'.join([str(x) for x in subgraph.nodes()])
+                    category = '*'.join([str(x) for x in subgraph.nodes()])
                     for node in subgraph.nodes():
                         self.names[col][str(node).replace(" ", "")] = category
                     drop_out += subgraph.nodes()
@@ -819,7 +825,10 @@ class CorrelationTransformer(CustomTransformer):
         """
         if self.fit_first:
             model_cols = self.categorical_cols + self.numerical_cols + self.target
-            df = pd.concat([X.reset_index(drop=True), y.reset_index(drop=True)], axis=1)
+            if y is not None:
+                df = pd.concat([X.reset_index(drop=True), y.reset_index(drop=True)], axis=1)
+            else:
+                df = X.reset_index(drop=True)
             final_cols = [col for col in model_cols if col in df.columns]
             corr = df[final_cols].corr("spearman")
             if self.target[0] not in corr.columns:
@@ -1044,41 +1053,12 @@ class DummiesTransformer(CustomTransformer):
             return df
 
 
-def time_series_parallel_unpack(args):
-    """
-
-    :param args:
-    :return:
-    """
-    return time_series_parallel(*args)
-
-
-def time_series_parallel(df_name, key, date, target, static_cols, w, r):
-    """
-
-    :param df_name:
-    :param key:
-    :param date:
-    :param target:
-    :param static_cols:
-    :param w:
-    :param r:
-    :return:
-    """
-    dff = df_temp[df_temp[key] == df_name].sort_values(by=date, ascending=True)
-    df_t = series_to_supervised(dff.drop([key, date], axis=1), target=target, static_cols=static_cols, w=w, r=r,
-                                dropnan=False)
-    df_t[key] = dff[key]
-    df_t[date] = dff[date]
-    return df_t
-
-
 class TimeSeriesTransformer(CustomTransformer):
     """
     Transformer that performs time series data preparation
     """
     def __init__(self, w=5, r=1, dropnan=True, target=None, method="window", key=None, date=None, split_y=False,
-                 static_cols=[], **kwargs):
+                 static_cols=[], target_history=True, **kwargs):
         """
 
         :param w:
@@ -1102,7 +1082,81 @@ class TimeSeriesTransformer(CustomTransformer):
         self.date = date
         self.split_y = split_y
         self.static_cols = static_cols
+        self.target_history = target_history
         self.kwargs = kwargs
+
+    @staticmethod
+    def _series_to_supervised(data, w=5, r=1, dropnan=True, target=None, cols_remove=[], static_cols=[]):
+        """
+        convert series to supervised learning
+        :param data:
+        :param w:
+        :param r:
+        :param dropnan:
+        :param target:
+        :param cols_remove:
+        :param static_cols:
+        :return:
+        """
+        df = data
+        columns = [col for col in df.columns if col not in cols_remove]
+        cols, names = list(), list()
+        # input sequence (t-n, ... t-1)
+        for i in range(w, 0, -1):
+            cols.append(df.shift(i))
+            names += [('{}(t-{})'.format(j, i)) for j in columns]
+        # forecast sequence (t, t+1, ... t+n)
+        for i in range(0, r):
+            cols.append(df.shift(-i))
+            if i == 0:
+                names += list(columns)
+            else:
+                names += [('{}(t+{})'.format(j, i)) for j in columns]
+        # put it all together
+        agg = pd.concat(cols, axis=1)
+        agg.columns = names
+        # drop rows with NaN values
+        if dropnan:
+            agg.dropna(inplace=True)
+        else:
+            agg.fillna(-1, inplace=True)
+        if target is not None:
+            cols_static = ["{}(t)".format(col) for col in static_cols]
+            cols_remove = [col for col in agg.columns if (("{}(t)".format(col.split("(")[0]) in col or "{}(t+".format(
+                col.split("(")[0]) in col) and target not in col and col not in cols_static)]
+            agg.drop(cols_remove, axis=1, inplace=True)
+            try:
+                agg = agg.drop(target, axis=1)
+            except Exception as e:
+                pass
+        return agg
+
+    def _time_series_parallel_unpack(self, args):
+        """
+
+        :param args:
+        :return:
+        """
+        return self._time_series_parallel(*args)
+
+    def _time_series_parallel(self, df_name, key, date, target, static_cols, w, r):
+        """
+
+        :param df_name:
+        :param key:
+        :param date:
+        :param target:
+        :param static_cols:
+        :param w:
+        :param r:
+        :return:
+        """
+        dff = df_temp[df_temp[key] == df_name].sort_values(by=date, ascending=True)
+        df_t = self._series_to_supervised(dff.drop([key, date], axis=1), target=target, static_cols=static_cols, w=w, r=r,
+                                    dropnan=False)
+        df_t[key] = dff[key]
+        df_t[date] = dff[date]
+        return df_t
 
     def fit(self, X, y=None, **kwargs):
         """
@@ -1131,11 +1185,19 @@ class TimeSeriesTransformer(CustomTransformer):
         if self.method == "window":
             df_names = df[self.key].unique()
             pool = mp.Pool(mp.cpu_count(), initializer=init_time_series, initargs=(df,))
-            dfs = pool.map_async(time_series_parallel_unpack, [(df_name, self.key, self.date, self.target, self.static_cols, self.w, self.r) for df_name in df_names]).get()
+            dfs = pool.map_async(self._time_series_parallel_unpack, [(df_name, self.key, self.date, self.target, self.static_cols, self.w, self.r) for df_name in df_names]).get()
             pool.close()
             pool.join()
             df = pd.concat(dfs)
             df.set_index([self.key, self.date], inplace=True)
+            try:
+                if not self.target_history:
+                    cols_drop = [col for col in df.columns if self.target in col]
+                    df = df.drop(cols_drop, axis=1)
+                if self.target in df.columns:
+                    df = df.drop(self.target, axis=1)
+            except Exception as e:
+                pass
             logging.info("TimeSeriesTransformer transform end")
             return df
 
@@ -1158,7 +1220,6 @@ class FeatureSelectionTransformer(CustomTransformer):
         self.problem_type = problem_type
         self.features = []
 
-
     def fit(self, X, y=None, **kwargs):
 
         """
@@ -1173,14 +1234,19 @@ class FeatureSelectionTransformer(CustomTransformer):
             xgb = XGBClassifier()
         else:
             xgb = XGBRegressor()
-        xgb.fit(X, y)
-        features = list(X.columns)
-        importances = xgb.feature_importances_
-        indices = np.argsort(importances)[-self.top_n:]
-        indices = indices[::-1]
-        df = pd.DataFrame([(a, b) for a, b in zip(importances[indices], [features[i] for i in indices])],
-                          columns=["importance", "feature"])
-        self.features = df["feature"].tolist()
+        try:
+            xgb.fit(X, y)
+            features = list(X.columns)
+            importances = xgb.feature_importances_
+            indices = np.argsort(importances)[-min([self.top_n, len(features)]):]
+            indices = indices[::-1]
+            df = pd.DataFrame([(a, b) for a, b in zip(importances[indices], [features[i] for i in indices])],
+                              columns=["importance", "feature"])
+            self.features = df["feature"].tolist()
+        except Exception as e:
+            logging.info("problem in feature selection fit:")
+            logging.info(e)
+            self.features = list(X.columns)
         logging.info("FeatureSelectionTransformer fit end")
         return self
 
@@ -1193,4 +1259,7 @@ class FeatureSelectionTransformer(CustomTransformer):
         :return: df: the transformed data - Dataframe
         """
         logging.info("FeatureSelectionTransformer transform end")
+        cols = [col for col in self.features if col not in X.columns]
+        for col in cols:
+            X[col] = 0
         return X[self.features]

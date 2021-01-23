@@ -4,44 +4,31 @@ test input from datomize
 """
 from pyspark.sql.session import SparkSession
 from automl.automl import AutoML
+from automl.dev_tools import send_email
+import time
+import json
 from pyspark import SparkConf
 from google.protobuf.json_format import MessageToDict
-# from automl.test import simple_pb2
-# import os
 
 
 if __name__ == "__main__":
 
-    sc_conf = SparkConf()
-    sc_conf.setAppName("etl")
-    sc_conf.set('spark.executor.memory', '16g')
-    sc_conf.set('spark.driver.memory', '16g')
-    sc_conf.set('spark.debug.maxToStringFields', 500)
-    spark = SparkSession.builder.config(conf=sc_conf).getOrCreate()
-    # dict_obj = MessageToDict(simple_pb2)
+    params = json.loads(open("test/params.json", "rb").read())
+    spark = None
     mapping = None
     schema = None
-    aml_loan = AutoML(spark, mapping, schema, "target_loan")
-    aml_amount = AutoML(spark, mapping, schema, "target_amount")
-    aml_churn = AutoML(spark, mapping, schema, "target_churn")
-    aml_amount = AutoML(spark, mapping, schema, "gender")
-    # aml_loan.preprocess_data()
-    aml_loan.train()
-    aml_loan.preprocess_data()
-    aml_loan.train()
-    aml_loan.preprocess_data()
-    aml_loan.train()
-    aml_loan.preprocess_data()
-    aml_loan.train()
-    _, _, X, _ = aml_loan.get_data_after_preprocess()
-    X = X.groupby(["account_id"]).last()
-    predictions = aml_loan.predict(X)
-    aml_loan.explain(X.reset_index())
-    _, _, X, _ = aml_amount.get_data_after_preprocess()
-    X = X.groupby(["account_id"]).last()
-    predictions = aml_amount.predict(X)
-    aml_amount.explain(X.reset_index())
-    _, _, X, _ = aml_churn.get_data_after_preprocess()
-    X = X.groupby(["account_id"]).last()
-    predictions = aml_churn.predict(X)
-    aml_churn.explain(X.reset_index())
+    aml_sale = AutoML(spark, mapping, schema, "sale")
+    import numpy as np
+    # df_p = pd.DataFrame([{"prediction": p, "real": r, "asin": a} for p, r, a in zip(predictions, y, X.reset_index()["asin"])])
+    # df_p["prediction_v"] = df_p["prediction"].apply(lambda x: np.exp(x))
+    # df_p["real_v"] = df_p["real"].apply(lambda x: np.exp(x))
+    # start_time = time.time()
+    # aml_sale.preprocess_data()
+    # start_time = time.time()
+    # aml_sale.train()
+
+    _, _, X, _ = aml_sale.get_data_after_preprocess()
+    X = X.groupby(["asin"]).last()
+    predictions = aml_sale.predict(X)
+    aml_sale.explain(X.reset_index())
+    print(1)
