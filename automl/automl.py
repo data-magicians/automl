@@ -302,7 +302,8 @@ class AutoML:
         return metrics
 
     def explain(self, data, shap_exist=False, global_explain=True, top_n=20):
-
+        
+        os.chdir("/".join(os.path.dirname(os.path.realpath(__file__)).split("\\")[:-1]))
         model, model_name, best_metrics = self.get_best_model(True, True)
         model_name = model_name.split("_")[-1]
         target = self.problem
