@@ -22,6 +22,7 @@ from sklearn.neighbors import KNeighborsClassifier, KNeighborsRegressor
 from sklearn.naive_bayes import GaussianNB
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn import svm
+from tensorflow.keras.wrappers.scikit_learn import KerasRegressor, KerasClassifier
 from xgboost import XGBRegressor, XGBClassifier
 # from keras import backend as backend
 
@@ -216,10 +217,13 @@ def model_pipeline_run(index, model, params, X_train, y_train, X_test, y_test, m
         if "dl-rnn" in model_name:
             X_train = np.reshape(X_train.astype("float32").values, (X_train.shape[0], 1, X_train.shape[1]))
             X_test = np.reshape(X_test.astype("float32").values, (X_test.shape[0], 1, X_test.shape[1]))
+        elif "xgb" in model_name:
+            X_train = pd.DataFrame(X_train.astype("float32").values, columns=columns)
+            X_test = pd.DataFrame(X_test.astype("float32").values, columns=columns)
         else:
             X_train = X_train.astype("float32").values
             X_test = X_test.astype("float32").values
-        grid = grid.fit(X_train.astype("float32"), y_train)
+        grid = grid.fit(X_train, y_train)
         row["time"] = (time.time() - model_time) / 60
         row["pre_process_time"] = pre_process_time
         return scoring(grid, X_train, X_test, y_train, y_test, columns, row=row, model_name=model_name, type=type)

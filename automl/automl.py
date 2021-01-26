@@ -60,10 +60,8 @@ class AutoML:
         exclude_cols = [x["exclude_cols"] for x in params["problems"] if self.problem in x["target"]][0]
         target_cols = [t["target"] for t in problems]
         top_n = params["feature_selection"]
-        # todo remove the pandas and uncomment the spark to pandas
-        # df = self.session.sql("select * from spark_df_joined").toPandas()
-        # df = pd.read_csv('C:\\Users\\Administrator\\PycharmProjects\\automl\\test\\df_joined.csv').head(1000)
-        df = pd.read_csv('C:\\Users\\Administrator\\PycharmProjects\\automl\\test\\df_joined.csv')
+        path = params["path"]
+        df = pd.read_csv(path)
         try:
             df = df.drop(exclude_cols, axis=1)
         except Exception as e:
@@ -137,20 +135,35 @@ class AutoML:
             js_best = None
             if p["type"] == "classification":
                 models = [GaussianNB(), LogisticRegression(n_jobs=-1), KNeighborsClassifier(n_jobs=-1),
-                          RandomForestClassifier(n_jobs=-1), MLPClassifier(), svm.LinearSVC()]
-                # XGBClassifier(objective="reg:logistic", n_jobs=-1)]
+                          RandomForestClassifier(n_jobs=-1), MLPClassifier(), svm.LinearSVC(),
+                          XGBClassifier(objective="reg:logistic", n_jobs=-1)]
                 # KerasClassifier(build_fn=deeplearning, type="classification", verbose=1),
                 # KerasClassifier(build_fn=deeplearning_rnn, type="classification", verbose=1),
                 # KerasClassifier(build_fn=deeplearning_cnn, type="classification", verbose=1)]
             else:
                 models = [None, ElasticNet(), KNeighborsRegressor(n_jobs=-1),
-                          RandomForestRegressor(n_jobs=-1), MLPRegressor(), svm.LinearSVR()]
-                # XGBRegressor(objective="reg:linear", n_jobs=-1)]
+                          RandomForestRegressor(n_jobs=-1), MLPRegressor(), svm.LinearSVR(),
+                          XGBRegressor(objective="reg:linear", n_jobs=-1)]
                 # KerasRegressor(build_fn=deeplearning, type="regression", verbose=1),
                 # KerasRegressor(build_fn=deeplearning_rnn, type="regression", verbose=1),
                 # KerasRegressor(build_fn=deeplearning_cnn, type="regression", verbose=1)]
+                # models = [None, None, None, None, None, None, XGBRegressor(objective="reg:linear", n_jobs=-1)]
             x = self.get_preprocess_pipeline()
             X_train, y_train, X_test, y_test = self.get_data_after_preprocess()
+            try:
+                if problems[0]["target_outliers"]:
+                    q = np.quantile(y_train, 0.9)
+                    indices = [i for i in range(y_train.shape[0]) if y_train[i] <= q]
+                    X_train = X_train.iloc[indices]
+                    y_train = y_train[indices]
+            except Exception as e:
+                print("can't do quantile")
+            try:
+                if problems[0]["log"]:
+                    y_train = np.asarray([np.log(x) if x > 0 else np.log(0.001) for x in y_train])
+                    y_test = np.asarray([np.log(x) if x > 0 else np.log(0.001) for x in y_test])
+            except Exception as e:
+                print("can't do log transformation")
             x = (x[0], x[1], X_train, y_train, X_test, y_test, x[2], x[3])
             for index, model in enumerate(models):
                 models_2_run = [(x[1], model, params["hyperparameters"][p["type"]][models_names[index]], x[2], x[3], x[4], x[5], models_names[index], x[6], p["type"])]
@@ -208,7 +221,9 @@ class AutoML:
         path = os.path.dirname(os.path.realpath(__file__)) + "/results/"
         files = os.listdir(path)
         if explain:
-            files_best = [f.replace("_best_model.json", "") for f in files if "_rf" in f and self.problem in f and "json" not in f]
+            files_best = [f.replace("_best_model.json", "") for f in files if "_xgb" in f and self.problem in f and "json" not in f]
+            if len(files_best) == 0:
+                files_best = [f.replace("_best_model.json", "") for f in files if "_rf" in f and self.problem in f and "json" not in f]
         else:
             files_best = [f.replace("_best_model.json", "") for f in files if "best_model" in f and self.problem in f]
         model = None
@@ -250,7 +265,7 @@ class AutoML:
         shap_feature_df_abs = pd.DataFrame(shap_values).abs()
         # Apply Decorate-Sort row-wise to our df, and slice the top-n columns within each row...
         sort_decr2_topn = lambda row, nlargest=top_n: sorted(pd.Series(zip(shap_feature_df_abs.columns, row)),
-                                                           key=lambda cv: -cv[1])[:nlargest]
+                                                             key=lambda cv: -cv[1])[:nlargest]
         tmp = shap_feature_df_abs.apply(sort_decr2_topn, axis=1)
         # then your result (as a pandas DataFrame) is...
         np.array(tmp)
@@ -305,6 +320,7 @@ class AutoML:
 
     def explain(self, data, shap_exist=False, global_explain=True, top_n=20):
 
+        os.chdir("/".join(os.path.dirname(os.path.realpath(__file__)).split("\\")[:-1]))
         model, model_name, best_metrics = self.get_best_model(True, True)
         model_name = model_name.split("_")[-1]
         target = self.problem
@@ -333,16 +349,15 @@ class AutoML:
             new_cols[col] = new_col
             features_new.append(new_col)
 
-        if model_name in ["rf", "xgboost"]:
+        if model_name in ["rf", "xgb"]:
             importances = model.best_estimator_.steps[-1][-1].feature_importances_
             indices = np.argsort(importances)[-top_n:]
-            plt.figure()
+            # plt.figure()
             plt.title('Feature Importances')
             plt.yticks(range(len(indices)), [features_new[i] for i in indices], rotation=15, stretch=500)
             plt.xlabel('Relative Importance')
             plt.barh(range(len(indices)), importances[indices], color='b')
             plt.savefig(path + "importances.png", bbox_inches="tight")
-            # plt.show()
             indices = indices[::-1]
             df = pd.DataFrame([(a, b) for a, b in zip(importances[indices], [features_new[i] for i in indices])],
                               columns=["importance", "feature"])
@@ -356,7 +371,7 @@ class AutoML:
             except Exception as e:
                 print(e)
         else:
-            if model_name in ["rf", "xgboost"]:
+            if model_name in ["rf", "xgb"]:
                 ex = shap.TreeExplainer(model.best_estimator_.steps[-1][1])
             else:
                 ex = shap.KernelExplainer(model.best_estimator_.steps[-1][1])
@@ -373,48 +388,31 @@ class AutoML:
 
         data = data.rename(columns=new_cols)
         features = features_new
-        local_shap_df = self.shap_analysis(data, shap_val, features, data.columns[0], data[data.columns[0]].unique().tolist())
-        local_shap_df.to_csv(path + "local_shap_df.csv", index=False)
+        try:
+            local_shap_df = self.shap_analysis(data, shap_val, features, data.columns[0], data[data.columns[0]].unique().tolist())
+            local_shap_df.to_csv(path + "local_shap_df.csv", index=False)
+        except Exception as e:
+            print(e)
         if global_explain:
             plt.figure()
             shap.summary_plot(shap_val, data[features], show=False)
             plt.savefig(path + "shap_summary_plot.png", bbox_inches="tight")
-            # plt.show()
-            # shap.force_plot(expected_value, shap_val, data[features], show=False)
-            # plt.savefig(path + "shap_force_plot.png", bbox_inches="tight")
-            # plt.show()
             columns = features
             index = 0
-            corr_index = 0
             columns_short = columns[index:]
-            # columns_short = [col for col in columns_short if "SUM_OF_INTERNET_YEAR_ADVANCED_INCOME" not in col.upper() and "SUM_OF_PPA_INCOME" not in col.upper()]
             columns_short_index = []
             for i, v in enumerate(columns):
                 if v in columns_short:
                     columns_short_index.append(i)
-            # abs_sum = np.abs(shap_val[:, columns_short_index]).sum(axis=(0, 1))
-            # regular_sum = shap_val[:, columns_short_index].sum(axis=(0, 1))
-            # mean_ = shap_val[:, columns_short_index].mean(axis=(0, 1))
             abs_sum = np.abs(shap_val[:, columns_short_index]).sum(axis=(0))
-            regular_sum = shap_val[:, columns_short_index].sum(axis=(1))
-            mean_ = shap_val[:, columns_short_index].mean(axis=(1))
-            arg_min = abs_sum.argmin()
-            arg_max = abs_sum.argmax()
-            best_min = columns_short[arg_min]
-            best_max = columns_short[arg_max]
             idx = (-abs_sum).argsort()[:top_n]
-            # cols_s = [col.split("_VERTICAL_ID")[0] for col in columns_short]
             cols_s = columns_short
             best_features_sum = [abs_sum[i] for i in idx]
-            best_features_regular_sum = [regular_sum[i] for i in idx]
-            best_features_mean = [mean_[i] for i in idx]
             best_features = [cols_s[i] for i in idx]
             ############################################ check ######################################
             corrs = {}
             for i in idx:
                 corr = np.corrcoef(shap_val[:, columns_short_index][:, i], data[features].values[:, columns_short_index][:, i])
-                # corr = np.corrcoef(shap_val[:, columns_short_index][:, i].sum(axis=1),
-                #                    data[:, columns_short_index][:, i].sum(axis=1))
                 corrs[cols_s[i]] = corr[0, 1] if not np.isnan(corr[0, 1]) else 0
             plt.figure()
             ax = pd.Series(best_features_sum, index=best_features).plot(kind='barh',
@@ -423,21 +421,20 @@ class AutoML:
                                                                         x='Variable', y='SHAP_abs')
             ax.set_xlabel("SHAP Value (Red = Positive Impact) model: {} target: {}".format(model_name, target))
             plt.savefig(path + "shap_global_explain.png", bbox_inches="tight")
-            # plt.show()
 
-@staticmethod
-def _plot_roc(model, y, score):
+    @staticmethod
+    def _plot_roc(model, y, score):
 
-    plt.figure()
-    lw = 2
-    fpr, tpr, _ = metrics.roc_curve(y, score)
-    roc_auc = metrics.auc(fpr, tpr)
-    plt.plot(fpr, tpr, color='darkorange', lw=lw, label='ROC curve (area = %0.2f)' % roc_auc)
-    plt.plot([0, 1], [0, 1], color='navy', lw=lw, linestyle='--')
-    plt.xlim([0.0, 1.0])
-    plt.ylim([0.0, 1.05])
-    plt.xlabel('False Positive Rate')
-    plt.ylabel('True Positive Rate')
-    plt.title('ROC curve {}'.format(model))
-    plt.legend(loc="lower right")
-    plt.savefig("auc.png", bbox_inches="tight")
+        plt.figure()
+        lw = 2
+        fpr, tpr, _ = metrics.roc_curve(y, score)
+        roc_auc = metrics.auc(fpr, tpr)
+        plt.plot(fpr, tpr, color='darkorange', lw=lw, label='ROC curve (area = %0.2f)' % roc_auc)
+        plt.plot([0, 1], [0, 1], color='navy', lw=lw, linestyle='--')
+        plt.xlim([0.0, 1.0])
+        plt.ylim([0.0, 1.05])
+        plt.xlabel('False Positive Rate')
+        plt.ylabel('True Positive Rate')
+        plt.title('ROC curve {}'.format(model))
+        plt.legend(loc="lower right")
+        plt.savefig("auc.png", bbox_inches="tight")

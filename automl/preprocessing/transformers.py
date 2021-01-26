@@ -4,12 +4,13 @@ from sklearn.impute import SimpleImputer
 import sys
 sys.path.append("/home/ec2-user/TCM")
 import pandas as pd
-import hdbscan
+# import hdbscan
 import numpy as np
 import networkx
 import os
 import multiprocessing as mp
 from sklearn.feature_selection import chi2
+from scipy.stats import boxcox
 # for stop seeing unnecessary messages
 pd.options.mode.chained_assignment = None
 os.system("taskset -p 0xff %d" % os.getpid())
@@ -42,24 +43,6 @@ def init_time_series(df):
     """
     global df_temp
     df_temp = df
-
-
-def try_this(x):
-
-    doing(*x)
-
-
-def doing(key, key_field, date_field, fill_end):
-
-    dir_path = os.path.dirname(os.path.realpath(__file__))
-    X_t = df_temp[df_temp[key_field] == key].sort_values(by=date_field)
-    X_t = X_t.fillna(method="ffill").fillna(method="bfill").fillna(fill_end)
-    lock.acquire()
-    if not os.path.exists(dir_path + "/data.csv"):
-        X_t.to_csv(dir_path + "/data.csv")
-    else:
-        X_t.to_csv(dir_path + "/data.csv", mode="a", header=False)
-    lock.release()
 
 
 class CustomTransformer(BaseEstimator, TransformerMixin):
@@ -192,6 +175,23 @@ class ImputeTransformer(CustomTransformer):
         self.fill_end = fill_end
         self.parallel = parallel
 
+    def _try_this(self, x):
+
+        self._doing(*x)
+
+    @staticmethod
+    def _doing(key, key_field, date_field, fill_end):
+
+        dir_path = os.path.dirname(os.path.realpath(__file__))
+        X_t = df_temp[df_temp[key_field] == key].sort_values(by=date_field)
+        X_t = X_t.fillna(method="ffill").fillna(method="bfill").fillna(fill_end)
+        lock.acquire()
+        if not os.path.exists(dir_path + "/data.csv"):
+            X_t.to_csv(dir_path + "/data.csv")
+        else:
+            X_t.to_csv(dir_path + "/data.csv", mode="a", header=False)
+        lock.release()
+
     def fit(self, X, y=None, **kwargs):
         """
         learns what are the column that have missing values, to make sure that in the transform the data that will
@@ -238,7 +238,7 @@ class ImputeTransformer(CustomTransformer):
                     os.remove(dir_path + "/data.csv")
                 lock = mp.Lock()
                 pool = mp.Pool(mp.cpu_count(), initializer=init, initargs=(lock, X.copy(True)))
-                pool.map_async(try_this, [(key, self.key_field, self.date_field, self.fill_end) for key in keys])
+                pool.map_async(self._try_this, [(key, self.key_field, self.date_field, self.fill_end) for key in keys])
                 pool.close()
                 pool.join()
             else:
@@ -1059,7 +1059,7 @@ class TimeSeriesTransformer(CustomTransformer):
     Transformer that performs time series data preparation
     """
     def __init__(self, w=5, r=1, dropnan=True, target=None, method="window", key=None, date=None, split_y=False,
-                 static_cols=[], target_history=True, **kwargs):
+                 static_cols=[], target_history=True, fill_v=True, **kwargs):
         """
 
         :param w:
@@ -1084,10 +1084,10 @@ class TimeSeriesTransformer(CustomTransformer):
         self.split_y = split_y
         self.static_cols = static_cols
         self.target_history = target_history
+        self.fill_v = fill_v
         self.kwargs = kwargs
 
-    @staticmethod
-    def _series_to_supervised(data, w=5, r=1, dropnan=True, target=None, cols_remove=[], static_cols=[]):
+    def _series_to_supervised(self, data, w=5, r=1, dropnan=True, target=None, cols_remove=[], static_cols=[]):
         """
         convert series to supervised learning
         :param data:
@@ -1119,7 +1119,7 @@ class TimeSeriesTransformer(CustomTransformer):
         # drop rows with NaN values
         if dropnan:
             agg.dropna(inplace=True)
-        else:
+        elif self.fill_v:
             agg.fillna(-1, inplace=True)
         if target is not None:
             cols_static = ["{}(t)".format(col) for col in static_cols]

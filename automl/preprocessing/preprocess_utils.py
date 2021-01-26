@@ -341,7 +341,7 @@ def over_sample(X_train, y_train):
 
 
 def features_pipeline(index, X_train, y_train ,X_test, y_test, columns, row, spark, key=None, date=None, static_cols=[],
-                      r=1, w=2, corr_per=0.5, oversample=True, top_n=50):
+                      r=1, w=2, corr_per=0.9, oversample=True, top_n=50):
     """
     running a problemread_data
     :param index: the index of the sampled from the original dataset - int
